@@ -1,10 +1,19 @@
+import sys
+from pathlib import Path
+
+# Ensure backend root is on sys.path if run directly as a script
+backend_root = Path(__file__).resolve().parent.parent
+if str(backend_root) not in sys.path:
+    sys.path.insert(0, str(backend_root))
+
 import logging
 from contextlib import asynccontextmanager
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
+from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from app.core.config import settings
-from app.core.database import init_db
+from app.core.database import init_db, check_db_health
 from app.services.database_service import db
 from app.services.reminder_service import check_and_send_1hr_reminders
 from app.api.v1.webhook import router as webhook_router
@@ -56,18 +65,29 @@ app = FastAPI(
     lifespan=lifespan
 )
 
-# CORS Configuration
-origins = settings.CORS_ORIGINS
-if isinstance(origins, str):
-    origins = [origins]
+# CORS Configuration for Frontend Integration (http://localhost:5173, etc.)
+origins = settings.get_cors_origins()
+logger.info(f"Configuring CORS with origins: {origins}")
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=origins if origins else ["*"],
+    allow_origins=origins,
+    allow_origin_regex=r"^https?://(localhost|127\.0\.0\.1)(:\d+)?$",
     allow_credentials=True,
-    allow_methods=["*"],
+    allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS", "HEAD"],
     allow_headers=["*"],
+    expose_headers=["*"],
+    max_age=86400,
 )
+
+
+@app.exception_handler(Exception)
+async def global_exception_handler(request: Request, exc: Exception):
+    logger.error(f"GLOBAL ERROR on {request.method} {request.url}: {exc}", exc_info=True)
+    return JSONResponse(
+        status_code=500,
+        content={"detail": f"{type(exc).__name__}: {str(exc)}", "type": type(exc).__name__}
+    )
 
 # Include Routers
 app.include_router(webhook_router)
@@ -78,11 +98,13 @@ app.include_router(admin_router, prefix="/api/v1")
 
 @app.get("/health", tags=["Health"])
 async def health_check():
+    db_health = await check_db_health()
     return {
-        "status": "HEALTHY",
+        "status": "HEALTHY" if db_health.get("status") == "UP" else "DEGRADED",
         "service": "Siddhi Patient-Doctor Assistant",
         "environment": settings.ENV,
-        "gemini_model": settings.GEMINI_MODEL
+        "gemini_model": settings.GEMINI_MODEL,
+        "database": db_health
     }
 
 
@@ -115,3 +137,9 @@ else:
             "webhook_url": "/webhook",
             "health": "/health"
         }
+
+
+if __name__ == "__main__":
+    import uvicorn
+    uvicorn.run("app.main:app", host="0.0.0.0", port=8000, reload=True)
+

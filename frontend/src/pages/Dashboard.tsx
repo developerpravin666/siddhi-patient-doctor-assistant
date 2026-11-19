@@ -1,4 +1,5 @@
 import React from 'react';
+import { useNavigate, useOutletContext } from 'react-router-dom';
 import { 
   Calendar, 
   CheckCircle2, 
@@ -10,16 +11,37 @@ import {
   ChevronRight,
   MessageSquare
 } from 'lucide-react';
-import { DashboardStats, Appointment } from '../types';
+import { DashboardStats, Appointment, AppContextType } from '../types';
 
 interface DashboardProps {
-  stats: DashboardStats;
-  recentAppointments: Appointment[];
-  onNavigate: (tab: any) => void;
-  onRefresh: () => void;
+  stats?: DashboardStats;
+  recentAppointments?: Appointment[];
+  onNavigate?: (tab: any) => void;
+  onRefresh?: () => void;
 }
 
-export const Dashboard: React.FC<DashboardProps> = ({ stats, recentAppointments, onNavigate, onRefresh }) => {
+export const Dashboard: React.FC<DashboardProps> = (props) => {
+  const navigate = useNavigate();
+  const outlet = useOutletContext<AppContextType>();
+
+  const stats = props.stats || outlet?.stats || {
+    total_appointments: 0,
+    today_appointments: 0,
+    confirmed_appointments: 0,
+    cancelled_appointments: 0,
+    total_patients: 0,
+    total_doctors: 0,
+    pending_reminders: 0
+  };
+  const recentAppointments = props.recentAppointments || outlet?.appointments || [];
+  const handleNavigate = (path: string) => {
+    if (props.onNavigate) {
+      props.onNavigate(path);
+    } else {
+      navigate(path.startsWith('/') ? path : `/${path}`);
+    }
+  };
+  const handleRefresh = props.onRefresh || outlet?.loadData;
   return (
     <div className="space-y-6">
       {/* Top Banner */}
@@ -36,13 +58,13 @@ export const Dashboard: React.FC<DashboardProps> = ({ stats, recentAppointments,
         </div>
         <div className="flex items-center gap-3">
           <button
-            onClick={() => onNavigate('simulator')}
+            onClick={() => handleNavigate('/simulator')}
             className="px-4 py-2.5 rounded-xl bg-white text-brand-700 font-bold text-sm hover:bg-brand-50 transition shadow-md flex items-center gap-2"
           >
             <MessageSquare className="w-4 h-4 text-brand-600" /> Test WhatsApp Simulator
           </button>
           <button
-            onClick={onRefresh}
+            onClick={handleRefresh}
             className="px-3.5 py-2.5 rounded-xl bg-brand-800/60 text-white font-medium text-sm hover:bg-brand-800 transition"
           >
             Refresh
@@ -151,7 +173,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ stats, recentAppointments,
               <p className="text-xs text-slate-500">Live feed of WhatsApp bookings</p>
             </div>
             <button
-              onClick={() => onNavigate('appointments')}
+              onClick={() => handleNavigate('/appointments')}
               className="text-xs font-bold text-brand-600 hover:text-brand-700 flex items-center gap-1"
             >
               View All <ChevronRight className="w-3.5 h-3.5" />

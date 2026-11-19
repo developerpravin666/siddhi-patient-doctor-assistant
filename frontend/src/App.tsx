@@ -1,110 +1,232 @@
-import React, { useState, useEffect } from 'react';
-import { Navbar } from './components/Navbar';
-import { Sidebar, NavTab } from './components/Sidebar';
+import React from 'react';
+import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
+import { MainLayout } from './components/MainLayout';
+import { ProtectedRoute } from './components/ProtectedRoute';
+import { LoginView } from './components/LoginView';
 import { Dashboard } from './pages/Dashboard';
 import { Appointments } from './pages/Appointments';
 import { WhatsAppSimulator } from './pages/WhatsAppSimulator';
 import { Doctors } from './pages/Doctors';
 import { Patients } from './pages/Patients';
+import { WhatsAppConfigPage } from './pages/WhatsAppConfig';
 import { SettingsPage } from './pages/Settings';
-import { 
-  getDashboardStats, 
-  getAppointments, 
-  getDoctors, 
-  getClinics, 
-  getPatients 
-} from './api/client';
-import { DashboardStats, Appointment, Doctor, Clinic, Patient } from './types';
+import { TenantsManagement } from './pages/TenantsManagement';
+import { UsersManagement } from './pages/UsersManagement';
+import { UserForm } from './pages/UserForm';
+import { AppointmentForm } from './pages/AppointmentForm';
+import { DoctorForm } from './pages/DoctorForm';
+import { PatientForm } from './pages/PatientForm';
+import { SpecializationsManagement } from './pages/SpecializationsManagement';
+import { getStoredUser } from './api/client';
 
+/**
+ * Role-aware root redirect component.
+ * Directs Front Desk / Receptionist staff to live appointments queue,
+ * and Super Admin / Clinic Admin to the main KPI dashboard.
+ */
+const RootRedirect: React.FC = () => {
+  const user = getStoredUser();
+  if (!user) {
+    return <Navigate to="/login" replace />;
+  }
+  if (user.role === 'RECEPTIONIST') {
+    return <Navigate to="/appointments" replace />;
+  }
+  return <Navigate to="/dashboard" replace />;
+};
+
+/**
+ * Main Application Routing Specification
+ * Implements client-side routing, protected role-based layouts,
+ * and granular screen permission checks adhering to CODING_STANDARDS.md.
+ */
 export const App: React.FC = () => {
-  const [currentTab, setCurrentTab] = useState<NavTab>('dashboard');
-  const [stats, setStats] = useState<DashboardStats>({
-    total_appointments: 0,
-    today_appointments: 0,
-    confirmed_appointments: 0,
-    cancelled_appointments: 0,
-    total_patients: 0,
-    total_doctors: 1,
-    pending_reminders: 0
-  });
-  const [appointments, setAppointments] = useState<Appointment[]>([]);
-  const [doctors, setDoctors] = useState<Doctor[]>([]);
-  const [clinics, setClinics] = useState<Clinic[]>([]);
-  const [patients, setPatients] = useState<Patient[]>([]);
-
-  const loadData = async () => {
-    try {
-      const [sData, aData, dData, cData, pData] = await Promise.allSettled([
-        getDashboardStats(),
-        getAppointments(),
-        getDoctors(),
-        getClinics(),
-        getPatients()
-      ]);
-
-      if (sData.status === 'fulfilled') setStats(sData.value);
-      if (aData.status === 'fulfilled') setAppointments(aData.value);
-      if (dData.status === 'fulfilled') setDoctors(dData.value);
-      if (cData.status === 'fulfilled') setClinics(cData.value);
-      if (pData.status === 'fulfilled') setPatients(pData.value);
-    } catch (err) {
-      console.error("Failed to load initial data", err);
-    }
-  };
-
-  useEffect(() => {
-    loadData();
-    // Poll data periodically every 15s to catch simulator bookings
-    const interval = setInterval(loadData, 15000);
-    return () => clearInterval(interval);
-  }, []);
-
   return (
-    <div className="min-h-screen bg-slate-50 flex flex-col">
-      <Navbar clinicName={clinics[0]?.name} />
+    <BrowserRouter>
+      <Routes>
+        {/* Public Authentication Route */}
+        <Route path="/login" element={<LoginView />} />
 
-      <div className="flex-1 flex flex-row">
-        <Sidebar 
-          currentTab={currentTab} 
-          onSelectTab={setCurrentTab} 
-          pendingRemindersCount={stats.pending_reminders} 
-        />
+        {/* Authenticated Application Routes wrapped in MainLayout */}
+        <Route
+          path="/"
+          element={
+            <ProtectedRoute>
+              <MainLayout />
+            </ProtectedRoute>
+          }
+        >
+          {/* Default Root Redirect */}
+          <Route index element={<RootRedirect />} />
 
-        <main className="flex-1 p-6 max-w-7xl mx-auto w-full">
-          {currentTab === 'dashboard' && (
-            <Dashboard
-              stats={stats}
-              recentAppointments={appointments}
-              onNavigate={setCurrentTab}
-              onRefresh={loadData}
-            />
-          )}
+          {/* Core Routed Pages */}
+          <Route
+            path="dashboard"
+            element={
+              <ProtectedRoute allowedRoles={['SUPER_ADMIN', 'CLINIC_ADMIN']}>
+                <Dashboard />
+              </ProtectedRoute>
+            }
+          />
 
-          {currentTab === 'appointments' && (
-            <Appointments
-              appointments={appointments}
-              onRefresh={loadData}
-            />
-          )}
+          <Route
+            path="tenants"
+            element={
+              <ProtectedRoute allowedRoles={['SUPER_ADMIN']}>
+                <TenantsManagement />
+              </ProtectedRoute>
+            }
+          />
 
-          {currentTab === 'simulator' && (
-            <WhatsAppSimulator />
-          )}
+          <Route
+            path="users"
+            element={
+              <ProtectedRoute allowedRoles={['SUPER_ADMIN', 'CLINIC_ADMIN']}>
+                <UsersManagement />
+              </ProtectedRoute>
+            }
+          />
 
-          {currentTab === 'doctors' && (
-            <Doctors doctors={doctors} />
-          )}
+          <Route
+            path="users/new"
+            element={
+              <ProtectedRoute allowedRoles={['SUPER_ADMIN', 'CLINIC_ADMIN']}>
+                <UserForm />
+              </ProtectedRoute>
+            }
+          />
 
-          {currentTab === 'patients' && (
-            <Patients patients={patients} />
-          )}
+          <Route
+            path="users/:id/edit"
+            element={
+              <ProtectedRoute allowedRoles={['SUPER_ADMIN', 'CLINIC_ADMIN']}>
+                <UserForm />
+              </ProtectedRoute>
+            }
+          />
 
-          {currentTab === 'settings' && (
-            <SettingsPage clinic={clinics[0]} />
-          )}
-        </main>
-      </div>
-    </div>
+          <Route
+            path="appointments"
+            element={
+              <ProtectedRoute requiredScreen="appointments" requiredAction="view">
+                <Appointments />
+              </ProtectedRoute>
+            }
+          />
+
+          <Route
+            path="appointments/new"
+            element={
+              <ProtectedRoute requiredScreen="appointments" requiredAction="create">
+                <AppointmentForm />
+              </ProtectedRoute>
+            }
+          />
+
+          <Route
+            path="appointments/:id/edit"
+            element={
+              <ProtectedRoute requiredScreen="appointments" requiredAction="edit">
+                <AppointmentForm />
+              </ProtectedRoute>
+            }
+          />
+
+          <Route
+            path="simulator"
+            element={
+              <ProtectedRoute requiredScreen="simulator" requiredAction="view">
+                <WhatsAppSimulator />
+              </ProtectedRoute>
+            }
+          />
+
+          <Route
+            path="doctors"
+            element={
+              <ProtectedRoute requiredScreen="doctors" requiredAction="view">
+                <Doctors />
+              </ProtectedRoute>
+            }
+          />
+
+          <Route
+            path="doctors/new"
+            element={
+              <ProtectedRoute requiredScreen="doctors" requiredAction="create">
+                <DoctorForm />
+              </ProtectedRoute>
+            }
+          />
+
+          <Route
+            path="doctors/:id/edit"
+            element={
+              <ProtectedRoute requiredScreen="doctors" requiredAction="edit">
+                <DoctorForm />
+              </ProtectedRoute>
+            }
+          />
+
+          <Route
+            path="specializations"
+            element={
+              <ProtectedRoute allowedRoles={['SUPER_ADMIN', 'CLINIC_ADMIN']}>
+                <SpecializationsManagement />
+              </ProtectedRoute>
+            }
+          />
+
+          <Route
+            path="patients"
+            element={
+              <ProtectedRoute requiredScreen="patients" requiredAction="view">
+                <Patients />
+              </ProtectedRoute>
+            }
+          />
+
+          <Route
+            path="patients/new"
+            element={
+              <ProtectedRoute requiredScreen="patients" requiredAction="create">
+                <PatientForm />
+              </ProtectedRoute>
+            }
+          />
+
+          <Route
+            path="patients/:id/edit"
+            element={
+              <ProtectedRoute requiredScreen="patients" requiredAction="edit">
+                <PatientForm />
+              </ProtectedRoute>
+            }
+          />
+
+          <Route
+            path="whatsapp-config"
+            element={
+              <ProtectedRoute allowedRoles={['SUPER_ADMIN', 'CLINIC_ADMIN']}>
+                <WhatsAppConfigPage />
+              </ProtectedRoute>
+            }
+          />
+
+          <Route
+            path="settings"
+            element={
+              <ProtectedRoute allowedRoles={['SUPER_ADMIN', 'CLINIC_ADMIN']}>
+                <SettingsPage />
+              </ProtectedRoute>
+            }
+          />
+        </Route>
+
+        {/* Fallback Catch-All Route */}
+        <Route path="*" element={<Navigate to="/" replace />} />
+      </Routes>
+    </BrowserRouter>
   );
 };
 

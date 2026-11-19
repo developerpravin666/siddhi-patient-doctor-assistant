@@ -105,7 +105,7 @@ async def run_tests():
         data_info = t_info.json()
         print("Bot:\n", data_info["reply_text"])
         assert "Suite 402, Siddhi Medical Enclave" in data_info["reply_text"]
-        assert "9:00 AM – 1:00 PM" in data_info["reply_text"]
+        assert "9:00 AM" in data_info["reply_text"] and "1:00 PM" in data_info["reply_text"]
 
         # 6. SCENARIO D: Human Hand-off (BUSINESS_FLOW.md Section 4.4)
         print("\n--- Testing Scenario D: Human Hand-off ---")
@@ -119,29 +119,29 @@ async def run_tests():
         assert "flagged your request for our front-desk reception staff" in data_hand["reply_text"]
         assert "+91 98765 00000" in data_hand["reply_text"]
 
-        # 7. Check Admin Stats & Appointments API
+        # 7. Test Admin Login and authenticated API endpoints
         print("\n--- Testing Admin Stats & Appointments API ---")
-        stats_res = await client.get("/api/v1/admin/stats")
+        login_res = await client.post("/api/v1/auth/login", json={"username": "superadmin", "password": "superadmin123"})
+        assert login_res.status_code == 200
+        login_data = login_res.json()
+        assert "access_token" in login_data
+        admin_headers = {"Authorization": f"Bearer {login_data['access_token']}"}
+        print("✓ Admin Login authentication passed!")
+
+        stats_res = await client.get("/api/v1/admin/stats", headers=admin_headers)
         assert stats_res.status_code == 200
         stats = stats_res.json()
         print("Admin Stats:", stats)
         assert stats["total_appointments"] >= 1
         assert stats["confirmed_appointments"] >= 1
 
-        appts_res = await client.get("/api/v1/appointments")
+        appts_res = await client.get("/api/v1/appointments", headers=admin_headers)
         assert appts_res.status_code == 200
         appts = appts_res.json()
         print(f"Retrieved {len(appts)} appointments from database.")
         sneha_appt = next((a for a in appts if "Sneha" in a["patient_name"]), None)
         assert sneha_appt is not None
         print(f"✓ Sneha's appointment verified in database with ID: {sneha_appt['id']}")
-
-        # 8. Test Admin Login
-        login_res = await client.post("/api/v1/auth/login", json={"username": "admin", "password": "admin123"})
-        assert login_res.status_code == 200
-        login_data = login_res.json()
-        assert "access_token" in login_data
-        print("✓ Admin Login authentication passed!")
 
     print("\n" + "=" * 60)
     print("ALL BACKEND E2E TESTS PASSED PERFECTLY!")

@@ -412,6 +412,7 @@ Super Admins and Clinic Admins manage tenants, clinics, doctors, time slots, and
 - **UI & Styling:** Tailwind CSS + Shadcn UI (Radix Primitives)
 - **Calendar & Appointments:** FullCalendar React or DayPicker
 - **Data Table:** TanStack Table v8 with pagination, filtering, and export to CSV/Excel
+- **Validtion:** React Hook Form + Zod (Recommended) for validation
 
 ---
 

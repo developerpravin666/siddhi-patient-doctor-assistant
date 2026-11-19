@@ -1,12 +1,15 @@
 import React from 'react';
+import { useOutletContext } from 'react-router-dom';
 import { MessageSquare, MapPin } from 'lucide-react';
-import { Clinic } from '../types';
+import { Clinic, AppContextType } from '../types';
 
 interface SettingsProps {
   clinic?: Clinic;
 }
 
-export const SettingsPage: React.FC<SettingsProps> = ({ clinic }) => {
+export const SettingsPage: React.FC<SettingsProps> = (props) => {
+  const outlet = useOutletContext<AppContextType>();
+  const clinic = props.clinic || outlet?.clinics?.[0];
   return (
     <div className="space-y-6 max-w-4xl">
       <div>

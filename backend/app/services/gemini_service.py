@@ -175,6 +175,39 @@ class GeminiService:
         msg_clean = user_message.strip()
         msg_lower = msg_clean.lower()
 
+        # Dynamic Clinic & Doctor context from database
+        clinic_name = settings.DEFAULT_CLINIC_NAME
+        clinic_address = settings.DEFAULT_CLINIC_ADDRESS
+        clinic_phone = settings.DEFAULT_CLINIC_PHONE
+        clinic_hours = "Monday – Saturday: 9:00 AM – 1:00 PM and 4:00 PM – 7:30 PM (Sundays Closed)"
+        primary_doctor_name = settings.DEFAULT_DOCTOR_NAME
+        primary_doctor_specialty = settings.DEFAULT_DOCTOR_SPECIALTY
+
+        try:
+            from sqlalchemy import select, text
+            from app.core.database import AsyncSessionLocal, is_postgres
+            from app.models.domain import Clinic, Doctor
+            async with AsyncSessionLocal() as dbs:
+                if is_postgres():
+                    await dbs.execute(text('SET search_path TO "clinic_default", public;'))
+                c_res = await dbs.execute(select(Clinic).limit(1))
+                c_obj = c_res.scalar_one_or_none()
+                if c_obj:
+                    clinic_name = c_obj.name
+                    clinic_address = c_obj.address
+                    if c_obj.phone:
+                        clinic_phone = c_obj.phone
+                    if c_obj.consultation_hours:
+                        clinic_hours = c_obj.consultation_hours
+
+                d_res = await dbs.execute(select(Doctor).where(Doctor.is_active == True).limit(5))
+                doc_list = d_res.scalars().all()
+                if doc_list:
+                    primary_doctor_name = doc_list[0].name
+                    primary_doctor_specialty = doc_list[0].specialty
+        except Exception as e:
+            logger.warning(f"Could not load dynamic clinic context from DB: {e}")
+
         # 1. Emergency Check (Section 4.1 CAUTION)
         emergency_keywords = [
             "chest pain", "shortness of breath", "heart attack", "heavy bleeding",
@@ -195,15 +228,15 @@ class GeminiService:
             reply = (
                 "I have flagged your request for our front-desk reception staff. "
                 "They will call you shortly at this number during clinic operating hours. "
-                "You may also reach us directly at *+91 98765 00000*."
+                f"You may also reach us directly at *{clinic_phone}*."
             )
             return reply, executed_tools, session
 
         # 3. Clinic Timings & Location (Section 4.3)
         if any(k in msg_lower for k in ["where are you", "location", "address", "timings", "hours", "open"]):
             reply = (
-                "📍 *Clinic Address:* Suite 402, Siddhi Medical Enclave, Central Avenue\n"
-                "🕒 *Consultation Hours:* Monday – Saturday, 9:00 AM – 1:00 PM and 4:00 PM – 7:30 PM (Sundays Closed).\n\n"
+                f"📍 *Clinic Address:* {clinic_address}\n"
+                f"🕒 *Consultation Hours:* {clinic_hours}.\n\n"
                 "Would you like to book an appointment for tomorrow?"
             )
             return reply, executed_tools, session
@@ -250,8 +283,8 @@ class GeminiService:
                 session["greeted"] = True
                 session["awaiting_name"] = True
                 reply = (
-                    "Hello! 👋 Welcome to *Dr. Siddhi Patel's Clinic*.\n\n"
-                    "I would be happy to help you schedule an appointment with Dr. Patel.\n\n"
+                    f"Hello! 👋 Welcome to *{clinic_name}*.\n\n"
+                    f"I would be happy to help you schedule an appointment with {primary_doctor_name}.\n\n"
                     "May I please have your *full name*?"
                 )
                 return reply, executed_tools, session
@@ -290,8 +323,12 @@ class GeminiService:
                 except Exception:
                     formatted_date = "Tomorrow"
 
-                emoji_numbers = ["1️⃣", "2️⃣", "3️⃣", "4️⃣", "5️⃣"]
-                slots_text = "\n".join([f"{emoji_numbers[i]} *{slot}*" for i, slot in enumerate(slots)])
+                emoji_numbers = ["1️⃣", "2️⃣", "3️⃣", "4️⃣", "5️⃣", "6️⃣", "7️⃣", "8️⃣", "9️⃣", "🔟"]
+                slots_to_show = slots[:10]
+                slots_text = "\n".join([
+                    f"{emoji_numbers[i] if i < len(emoji_numbers) else f'({i+1})'} *{slot}*"
+                    for i, slot in enumerate(slots_to_show)
+                ])
 
                 reply = (
                     f"Got it! Here are the available consultation slots for *Tomorrow ({formatted_date})*:\n\n"
@@ -350,10 +387,10 @@ class GeminiService:
                     "🎉 *Appointment Confirmed!*\n\n"
                     "Here are your booking details:\n"
                     f"• *Patient:* {session['patient_name']}\n"
-                    f"• *Doctor:* Dr. Siddhi Patel (General Physician)\n"
+                    f"• *Doctor:* {booking_res.get('doctor_name', primary_doctor_name)}\n"
                     f"• *Date:* {display_date}\n"
                     f"• *Time:* {chosen_slot}\n"
-                    "• *Clinic Address:* Suite 402, Siddhi Medical Enclave, Central Avenue\n\n"
+                    f"• *Clinic Address:* {booking_res.get('clinic_address', clinic_address)}\n\n"
                     "⏰ *Note:* You will receive an automated reminder on WhatsApp *1 hour before* your scheduled visit.\n\n"
                     "Need to reschedule or cancel? Reply here anytime. Wishing you good health! 🌿"
                 )
@@ -377,7 +414,7 @@ class GeminiService:
             session.clear()
             session["step"] = 1
             reply = (
-                "Hello! 👋 Welcome back to *Dr. Siddhi Patel's Clinic*.\n\n"
+                f"Hello! 👋 Welcome back to *{clinic_name}*.\n\n"
                 "May I please have the *full name* for this appointment?"
             )
         return reply, executed_tools, session

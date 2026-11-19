@@ -63,7 +63,14 @@ uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
 - **Interactive API Documentation:** [http://localhost:8000/docs](http://localhost:8000/docs)
 - **Health Check Endpoint:** [http://localhost:8000/health](http://localhost:8000/health)
 - **WhatsApp Webhook:** `GET /webhook` and `POST /webhook`
-- **Default Seeded Admin User:** `admin` / `admin123`
+
+#### Seeded Role-Based Test Accounts:
+| Role | Username | Password | Access Privileges |
+| :--- | :--- | :--- | :--- |
+| **Super Admin (Product Owner)** | `superadmin` | `superadmin123` | Multi-Tenant Management, Global Clinics, Global User Accounts, Analytics, WhatsApp Simulator |
+| **Doctor (Clinic Admin)** | `doctor` | `doctor123` | Clinic Settings, Doctors & Schedules, Appointments, Staff Accounts, Patients Directory |
+| **Front Desk (Receptionist)** | `frontdesk` | `frontdesk123` | Live Appointments Queue, Patient Check-In, Manual Front-Desk Booking, Patient Directory, WhatsApp Simulator |
+| **System Admin (Legacy)** | `admin` | `admin123` | Full Super Admin fallback |
 
 ---
 
