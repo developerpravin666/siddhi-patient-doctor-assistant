@@ -6,11 +6,15 @@ import {
   ClipboardList, 
   CheckCircle, 
   XCircle, 
-  Edit3 
+  Edit3,
+  Trash2,
+  AlertTriangle,
+  Lock
 } from 'lucide-react';
 import { useOutletContext, useNavigate } from 'react-router-dom';
-import { getUsers, updateUser } from '../api/client';
+import { getUsers, updateUser, deleteUser } from '../api/client';
 import { AdminUser, UserRole, AppContextType } from '../types';
+import { DataTable, ColumnDef } from '../components/DataTable';
 
 interface UsersManagementProps {
   currentUser?: AdminUser | null;
@@ -28,18 +32,29 @@ const SCREEN_METADATA = [
 export const UsersManagement: React.FC<UsersManagementProps> = (props) => {
   const navigate = useNavigate();
   const outlet = useOutletContext<AppContextType>();
+  const currentUser = props.currentUser !== undefined ? props.currentUser : outlet?.currentUser;
   const currentUserRole = props.currentUserRole || outlet?.userRole || 'CLINIC_ADMIN';
 
   const [users, setUsers] = useState<AdminUser[]>([]);
   const [loading, setLoading] = useState(true);
+  const [toastMessage, setToastMessage] = useState<{ text: string; type: 'success' | 'error' } | null>(null);
+
+  // Deletion Confirmation Modal State
+  const [userToDelete, setUserToDelete] = useState<AdminUser | null>(null);
+  const [deleting, setDeleting] = useState(false);
+
+  const showToast = (text: string, type: 'success' | 'error') => {
+    setToastMessage({ text, type });
+    setTimeout(() => setToastMessage(null), 4000);
+  };
 
   const loadUsers = async () => {
     try {
       setLoading(true);
       const data = await getUsers();
       setUsers(data);
-    } catch (err) {
-      console.error(err);
+    } catch (err: any) {
+      showToast(err.response?.data?.detail || 'Failed to load staff accounts', 'error');
     } finally {
       setLoading(false);
     }
@@ -52,9 +67,25 @@ export const UsersManagement: React.FC<UsersManagementProps> = (props) => {
   const handleToggleActive = async (user: AdminUser) => {
     try {
       await updateUser(user.id, { is_active: !user.is_active });
+      showToast(`Account @${user.username} is now ${!user.is_active ? 'Active' : 'Disabled'}.`, 'success');
       loadUsers();
-    } catch (err) {
-      console.error(err);
+    } catch (err: any) {
+      showToast(err.response?.data?.detail || 'Failed to update account status', 'error');
+    }
+  };
+
+  const confirmDelete = async () => {
+    if (!userToDelete) return;
+    try {
+      setDeleting(true);
+      await deleteUser(userToDelete.id);
+      showToast(`Staff account @${userToDelete.username} deleted successfully.`, 'success');
+      setUserToDelete(null);
+      loadUsers();
+    } catch (err: any) {
+      showToast(err.response?.data?.detail || 'Failed to delete staff account', 'error');
+    } finally {
+      setDeleting(false);
     }
   };
 
@@ -82,137 +113,248 @@ export const UsersManagement: React.FC<UsersManagementProps> = (props) => {
     }
   };
 
+  // Define Grid Columns
+  const columns: ColumnDef<AdminUser>[] = [
+    {
+      key: 'full_name',
+      header: 'Staff Member',
+      sortable: true,
+      searchValue: (u) => `${u.full_name} ${u.username}`,
+      render: (user) => (
+        <div className="flex items-center gap-3">
+          <div className="w-8 h-8 rounded-full bg-slate-100 flex items-center justify-center font-bold text-slate-700 text-xs shadow-inner">
+            {user.full_name.charAt(0).toUpperCase()}
+          </div>
+          <div>
+            <p className="font-bold text-slate-900 text-xs sm:text-sm">{user.full_name}</p>
+            <p className="text-slate-400 font-mono text-[11px]">@{user.username}</p>
+          </div>
+        </div>
+      ),
+    },
+    {
+      key: 'role',
+      header: 'Role',
+      sortable: true,
+      render: (user) => {
+        const badge = getRoleBadge(user.role);
+        const RoleIcon = badge.icon;
+        return (
+          <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-bold border ${badge.bg}`}>
+            <RoleIcon className="w-3.5 h-3.5" />
+            <span>{badge.label}</span>
+          </span>
+        );
+      },
+    },
+    {
+      key: 'permissions',
+      header: 'Screen & Action Permissions',
+      sortable: false,
+      render: (user) => {
+        if (user.role === 'SUPER_ADMIN') {
+          return (
+            <span className="text-purple-700 font-semibold text-[11px] bg-purple-50 px-2 py-0.5 rounded-md border border-purple-100">
+              👑 Unrestricted Platform Access
+            </span>
+          );
+        }
+        if (user.role === 'CLINIC_ADMIN') {
+          return (
+            <span className="text-emerald-700 font-semibold text-[11px] bg-emerald-50 px-2 py-0.5 rounded-md border border-emerald-100">
+              🩺 Full Clinic Tenant Admin
+            </span>
+          );
+        }
+        return (
+          <div className="flex flex-wrap gap-1 max-w-md">
+            {SCREEN_METADATA.map((s) => {
+              const p = user.permissions?.[s.key];
+              if (!p || !p.view) return null;
+              const actions: string[] = [];
+              if (p.create) actions.push('Add');
+              if (p.edit) actions.push('Edit');
+              if (p.delete) actions.push('Del');
+              return (
+                <span
+                  key={s.key}
+                  className="inline-flex items-center gap-1 bg-slate-100 text-slate-700 px-2 py-0.5 rounded text-[10px] border border-slate-200"
+                >
+                  <span className="font-bold">{s.label}:</span>
+                  <span className="text-slate-500">
+                    {actions.length > 0 ? actions.join('+') : 'View'}
+                  </span>
+                </span>
+              );
+            })}
+          </div>
+        );
+      },
+    },
+    {
+      key: 'is_active',
+      header: 'Status',
+      sortable: true,
+      render: (user) => (
+        <span
+          className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-semibold ${
+            user.is_active ? 'bg-emerald-100 text-emerald-800' : 'bg-rose-100 text-rose-800'
+          }`}
+        >
+          {user.is_active ? <CheckCircle className="w-3 h-3 text-emerald-600" /> : <XCircle className="w-3 h-3 text-rose-600" />}
+          <span>{user.is_active ? 'Active' : 'Disabled'}</span>
+        </span>
+      ),
+    },
+    {
+      key: 'actions',
+      header: 'Actions',
+      sortable: false,
+      align: 'right',
+      render: (user) => {
+        const isSelf = currentUser?.id === user.id;
+        const isDefaultSuperAdmin = user.username === 'superadmin';
+        const canDeleteUser = !isSelf && !isDefaultSuperAdmin;
+
+        return (
+          <div className="flex items-center justify-end gap-1.5">
+            <button
+              onClick={() => navigate(`/users/${user.id}/edit`)}
+              className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-bold bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200 transition"
+              title="Edit Account & Permissions"
+            >
+              <Edit3 className="w-3 h-3" />
+              <span>Edit</span>
+            </button>
+
+            <button
+              onClick={() => handleToggleActive(user)}
+              disabled={isSelf}
+              className={`px-2.5 py-1 rounded-lg text-xs font-bold border transition ${
+                isSelf 
+                  ? 'opacity-40 cursor-not-allowed border-slate-200 text-slate-400' 
+                  : 'border-slate-200 hover:bg-slate-50 text-slate-600'
+              }`}
+              title={isSelf ? 'Cannot disable your own active account' : undefined}
+            >
+              {user.is_active ? 'Disable' : 'Enable'}
+            </button>
+
+            {canDeleteUser ? (
+              <button
+                onClick={() => setUserToDelete(user)}
+                className="p-1 rounded-lg text-rose-600 hover:bg-rose-50 border border-rose-200 hover:border-rose-300 transition"
+                title={`Delete @${user.username}`}
+              >
+                <Trash2 className="w-3.5 h-3.5" />
+              </button>
+            ) : (
+              <span className="p-1 text-slate-300" title={isSelf ? 'Cannot delete yourself' : 'Primary Admin protected'}>
+                <Lock className="w-3.5 h-3.5" />
+              </span>
+            )}
+          </div>
+        );
+      },
+    },
+  ];
+
   return (
     <div className="space-y-6">
-      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
-        <div>
-          <h2 className="text-xl font-bold text-slate-900">
-            {currentUserRole === 'SUPER_ADMIN' ? 'System User Accounts & Roles' : 'Clinic Staff & Front Desk Accounts'}
-          </h2>
-          <p className="text-xs text-slate-500">
-            {currentUserRole === 'SUPER_ADMIN'
-              ? 'Manage Super Admins, Doctors, and Tenant Staff with granular security controls'
-              : 'Create Front Desk accounts and customize screen-by-screen access (View, Add, Edit, Delete)'}
-          </p>
-        </div>
-
-        <button
-          onClick={() => navigate('/users/new')}
-          className="px-4 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-sm transition shadow-sm flex items-center gap-2"
+      {/* Toast Alert */}
+      {toastMessage && (
+        <div
+          className={`p-3 rounded-xl border text-xs font-semibold flex items-center justify-between ${
+            toastMessage.type === 'success'
+              ? 'bg-emerald-50 text-emerald-800 border-emerald-200'
+              : 'bg-rose-50 text-rose-800 border-rose-200'
+          }`}
         >
-          <Plus className="w-4 h-4" />
-          <span>Add Staff Account</span>
-        </button>
-      </div>
+          <span>{toastMessage.text}</span>
+          <button onClick={() => setToastMessage(null)} className="text-slate-400 hover:text-slate-600 font-bold ml-2">
+            ×
+          </button>
+        </div>
+      )}
 
-      {/* Users Table */}
-      <div className="bg-white rounded-2xl border border-slate-200/80 shadow-sm overflow-hidden">
-        {loading ? (
-          <div className="p-8 text-center text-slate-400 text-sm">Loading staff accounts...</div>
-        ) : users.length === 0 ? (
-          <div className="p-8 text-center text-slate-400 text-sm">No accounts found.</div>
-        ) : (
-          <table className="w-full text-left border-collapse text-xs">
-            <thead>
-              <tr className="border-b border-slate-100 bg-slate-50/75 text-slate-500 uppercase font-semibold tracking-wider">
-                <th className="py-3 px-4">User</th>
-                <th className="py-3 px-4">Role</th>
-                <th className="py-3 px-4">Screen & Action Permissions</th>
-                <th className="py-3 px-4">Status</th>
-                <th className="py-3 px-4 text-right">Actions</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-100">
-              {users.map((user) => {
-                const badge = getRoleBadge(user.role);
-                const RoleIcon = badge.icon;
+      {/* Main Grid with Searching, Sorting, and Paging */}
+      <DataTable<AdminUser>
+        title={currentUserRole === 'SUPER_ADMIN' ? 'System User Accounts & Roles' : 'Clinic Staff & Front Desk Accounts'}
+        subtitle={
+          currentUserRole === 'SUPER_ADMIN'
+            ? 'Manage Super Admins, Doctors, and Tenant Staff with granular security controls'
+            : 'Create Front Desk accounts and customize screen-by-screen access (View, Add, Edit, Delete)'
+        }
+        data={users}
+        columns={columns}
+        loading={loading}
+        searchPlaceholder="Search staff by name or username..."
+        emptyMessage="No staff accounts found."
+        defaultPageSize={10}
+        initialSortKey="full_name"
+        actionButton={
+          <button
+            onClick={() => navigate('/users/new')}
+            className="px-3.5 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs transition shadow-sm flex items-center gap-1.5"
+          >
+            <Plus className="w-3.5 h-3.5" />
+            <span>Add Staff Account</span>
+          </button>
+        }
+      />
 
-                return (
-                  <tr key={user.id} className="hover:bg-slate-50/50 transition">
-                    <td className="py-3.5 px-4">
-                      <div className="flex items-center gap-3">
-                        <div className="w-8 h-8 rounded-full bg-slate-100 flex items-center justify-center font-bold text-slate-700 text-xs">
-                          {user.full_name.charAt(0)}
-                        </div>
-                        <div>
-                          <p className="font-bold text-slate-900 text-sm">{user.full_name}</p>
-                          <p className="text-slate-400 font-mono text-[11px]">@{user.username}</p>
-                        </div>
-                      </div>
-                    </td>
+      {/* Delete Staff Confirmation Modal */}
+      {userToDelete && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/50 backdrop-blur-sm animate-fade-in">
+          <div className="bg-white rounded-2xl max-w-md w-full p-6 shadow-2xl border border-slate-100 space-y-4">
+            <div className="flex items-center gap-3 text-rose-600">
+              <div className="p-3 bg-rose-50 rounded-xl">
+                <AlertTriangle className="w-6 h-6" />
+              </div>
+              <div>
+                <h3 className="font-bold text-slate-900 text-base">Delete Staff Account</h3>
+                <p className="text-xs text-slate-500">This action cannot be undone</p>
+              </div>
+            </div>
 
-                    <td className="py-3.5 px-4">
-                      <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-bold border ${badge.bg}`}>
-                        <RoleIcon className="w-3.5 h-3.5" />
-                        <span>{badge.label}</span>
-                      </span>
-                    </td>
+            <p className="text-xs text-slate-600 leading-relaxed">
+              Are you sure you want to permanently delete{' '}
+              <strong className="text-slate-900">{userToDelete.full_name}</strong> (
+              <code className="text-rose-600 font-mono">@{userToDelete.username}</code>)? All access and granular screen
+              permissions for this account will be revoked immediately.
+            </p>
 
-                    <td className="py-3.5 px-4">
-                      {user.role === 'SUPER_ADMIN' ? (
-                        <span className="text-purple-700 font-semibold text-[11px] bg-purple-50 px-2 py-0.5 rounded-md border border-purple-100">
-                          👑 Unrestricted Platform Access
-                        </span>
-                      ) : user.role === 'CLINIC_ADMIN' ? (
-                        <span className="text-emerald-700 font-semibold text-[11px] bg-emerald-50 px-2 py-0.5 rounded-md border border-emerald-100">
-                          🩺 Full Clinic Tenant Admin
-                        </span>
-                      ) : (
-                        <div className="flex flex-wrap gap-1 max-w-md">
-                          {SCREEN_METADATA.map((s) => {
-                            const p = user.permissions?.[s.key];
-                            if (!p || !p.view) return null;
-                            const actions = [];
-                            if (p.create) actions.push('Add');
-                            if (p.edit) actions.push('Edit');
-                            if (p.delete) actions.push('Del');
-                            return (
-                              <span
-                                key={s.key}
-                                className="inline-flex items-center gap-1 bg-slate-100 text-slate-700 px-2 py-0.5 rounded text-[10px] border border-slate-200"
-                              >
-                                <span className="font-bold">{s.label}:</span>
-                                <span className="text-slate-500">
-                                  {actions.length > 0 ? actions.join('+') : 'View'}
-                                </span>
-                              </span>
-                            );
-                          })}
-                        </div>
-                      )}
-                    </td>
-
-                    <td className="py-3.5 px-4">
-                      <span className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-semibold ${
-                        user.is_active ? 'bg-emerald-100 text-emerald-800' : 'bg-rose-100 text-rose-800'
-                      }`}>
-                        {user.is_active ? <CheckCircle className="w-3 h-3 text-emerald-600" /> : <XCircle className="w-3 h-3 text-rose-600" />}
-                        <span>{user.is_active ? 'Active' : 'Disabled'}</span>
-                      </span>
-                    </td>
-
-                    <td className="py-3.5 px-4 text-right space-x-2">
-                      <button
-                        onClick={() => navigate(`/users/${user.id}/edit`)}
-                        className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-bold bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200 transition"
-                      >
-                        <Edit3 className="w-3 h-3" />
-                        Edit
-                      </button>
-                      <button
-                        onClick={() => handleToggleActive(user)}
-                        className="px-2.5 py-1 rounded-lg text-xs font-bold border border-slate-200 hover:bg-slate-50 text-slate-600 transition"
-                      >
-                        {user.is_active ? 'Disable' : 'Enable'}
-                      </button>
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        )}
-      </div>
+            <div className="flex items-center justify-end gap-3 pt-2">
+              <button
+                type="button"
+                onClick={() => setUserToDelete(null)}
+                disabled={deleting}
+                className="px-4 py-2 rounded-xl text-xs font-bold text-slate-600 hover:bg-slate-100 transition border border-slate-200"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={confirmDelete}
+                disabled={deleting}
+                className="px-4 py-2 rounded-xl text-xs font-bold bg-rose-600 hover:bg-rose-700 text-white transition shadow-sm flex items-center gap-1.5"
+              >
+                {deleting ? (
+                  <>
+                    <div className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                    <span>Deleting...</span>
+                  </>
+                ) : (
+                  <>
+                    <Trash2 className="w-3.5 h-3.5" />
+                    <span>Yes, Delete Account</span>
+                  </>
+                )}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

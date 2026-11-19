@@ -357,25 +357,73 @@ async def delete_user(
     db_session: AsyncSession = Depends(get_db),
     current_user: AdminUser = Depends(require_roles(["SUPER_ADMIN", "CLINIC_ADMIN"]))
 ):
-    stmt = select(AdminUser).where(AdminUser.id == user_id)
-    user = (await db_session.execute(stmt)).scalar_one_or_none()
-    if not user:
-        raise HTTPException(status_code=404, detail="User not found")
-
-    if current_user.role == "CLINIC_ADMIN" and user.tenant_id != current_user.tenant_id:
-        raise HTTPException(status_code=403, detail="Cannot delete user from another tenant")
-    if user.id == current_user.id:
+    # Prevent self-deletion
+    if user_id == current_user.id:
         raise HTTPException(status_code=400, detail="Cannot delete your own user account")
 
+    # 1. Search in public.admin_users
+    stmt = select(AdminUser).where(AdminUser.id == user_id)
+    user = (await db_session.execute(stmt)).scalar_one_or_none()
+
+    # 2. If not found in public and postgres, search active tenant schemas
     tenant_schema = await resolve_user_tenant_schema(current_user, db_session)
-    if is_postgres() and tenant_schema:
+    if not user and is_postgres():
         try:
-            await db_session.execute(text(f'DELETE FROM "{tenant_schema}".admin_users WHERE id = :id;'), {"id": user_id})
+            t_res = await db_session.execute(text("SELECT schema_name FROM public.tenants WHERE status='ACTIVE';"))
+            for (s_name,) in t_res.fetchall():
+                safe_s = sanitize_schema_name(s_name)
+                await db_session.execute(text(f'SET search_path TO "{safe_s}", public;'))
+                cand = (await db_session.execute(stmt)).scalar_one_or_none()
+                if cand:
+                    user = cand
+                    tenant_schema = safe_s
+                    break
         except Exception:
             pass
 
-    await db_session.delete(user)
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    # Guard: default superadmin cannot be deleted
+    if user.username == "superadmin":
+        raise HTTPException(status_code=400, detail="Cannot delete the default Super Admin account")
+
+    # Guard: Clinic Admin can only delete users belonging to their own tenant
+    if current_user.role == "CLINIC_ADMIN" and user.tenant_id != current_user.tenant_id:
+        raise HTTPException(status_code=403, detail="Cannot delete staff from another clinic tenant")
+
+    # Guard: Non-Super Admin cannot delete Super Admin
+    if user.role == "SUPER_ADMIN" and current_user.role != "SUPER_ADMIN":
+        raise HTTPException(status_code=403, detail="Cannot delete a Super Admin account")
+
+    # Delete from tenant schemas if postgres
+    if is_postgres():
+        schemas_to_clean = set()
+        if tenant_schema:
+            schemas_to_clean.add(tenant_schema)
+        if user.tenant_id:
+            try:
+                res_t = await db_session.execute(text("SELECT schema_name FROM public.tenants WHERE id = :tid;"), {"tid": user.tenant_id})
+                u_schema = res_t.scalar_one_or_none()
+                if u_schema:
+                    schemas_to_clean.add(sanitize_schema_name(u_schema))
+            except Exception:
+                pass
+
+        for s_clean in schemas_to_clean:
+            try:
+                await db_session.execute(text(f'DELETE FROM "{s_clean}".admin_users WHERE id = :id;'), {"id": user_id})
+            except Exception:
+                pass
+
+    try:
+        await db_session.delete(user)
+    except Exception:
+        if is_postgres():
+            await db_session.execute(text('DELETE FROM public.admin_users WHERE id = :id;'), {"id": user_id})
+
     await db_session.commit()
+    logger.info(f"User account '{user.username}' (id: {user_id}) deleted successfully by '{current_user.username}'.")
     return {"message": "User deleted successfully", "id": user_id}
 
 

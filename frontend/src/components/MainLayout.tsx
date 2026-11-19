@@ -1,5 +1,5 @@
-import React, { useState, useEffect } from 'react';
-import { Outlet, useNavigate } from 'react-router-dom';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
+import { Outlet, useNavigate, useLocation } from 'react-router-dom';
 import { Navbar } from './Navbar';
 import { Sidebar } from './Sidebar';
 import { 
@@ -31,54 +31,91 @@ export const MainLayout: React.FC = () => {
   const [clinics, setClinics] = useState<Clinic[]>([]);
   const [patients, setPatients] = useState<Patient[]>([]);
 
-  // Verify token freshness on mount
-  useEffect(() => {
-    const checkAuth = async () => {
-      const stored = getStoredUser();
-      if (!stored) {
-        navigate('/login', { replace: true });
-        return;
+  const location = useLocation();
+  const currentPathRef = useRef<string>('');
+  const isLoadingRef = useRef(false);
+  const authCheckedRef = useRef(false);
+
+  const loadData = useCallback(async (targetPath?: string) => {
+    if (isLoadingRef.current) return;
+    isLoadingRef.current = true;
+    try {
+      const path = (targetPath || location.pathname || '').toLowerCase();
+      const promises: Promise<any>[] = [];
+
+      if (path.includes('patient')) {
+        promises.push(getPatients().then(setPatients));
+      } else if (path.includes('doctor')) {
+        promises.push(getDoctors().then(setDoctors));
+      } else if (path.includes('appointment')) {
+        promises.push(getAppointments().then(setAppointments));
+        promises.push(getDoctors().then(setDoctors));
+      } else if (path.includes('dashboard') || path === '/' || path === '') {
+        promises.push(getDashboardStats().then(setStats));
+        promises.push(getAppointments().then(setAppointments));
+      } else if (path.includes('whatsapp') || path.includes('setting')) {
+        promises.push(getClinics().then(setClinics));
+        promises.push(getDoctors().then(setDoctors));
+      } else if (
+        path.includes('specialization') ||
+        path.includes('user') ||
+        path.includes('tenant')
+      ) {
+        // Dedicated master screens manage their own lifecycle.
+        // Do not fire any layout fallback calls.
+      } else if (targetPath === '__full__') {
+        // Explicit full layout refresh
+        promises.push(
+          getDashboardStats().then(setStats),
+          getAppointments().then(setAppointments),
+          getDoctors().then(setDoctors),
+          getClinics().then(setClinics),
+          getPatients().then(setPatients)
+        );
       }
-      try {
-        const freshUser = await getMe();
+
+      await Promise.allSettled(promises);
+    } catch (err) {
+      console.error('Failed to load data for route:', err);
+    } finally {
+      isLoadingRef.current = false;
+    }
+  }, [location.pathname]);
+
+  // Fetch route-specific data ONCE whenever switching between routes
+  useEffect(() => {
+    // Only execute when the route pathname actually changes
+    if (currentPathRef.current === location.pathname) return;
+    currentPathRef.current = location.pathname;
+
+    const stored = getStoredUser();
+    if (!stored) {
+      navigate('/login', { replace: true });
+      return;
+    }
+
+    loadData(location.pathname);
+  }, [location.pathname, navigate, loadData]);
+
+  // Background auth token verification once on mount
+  useEffect(() => {
+    if (authCheckedRef.current) return;
+    authCheckedRef.current = true;
+
+    const stored = getStoredUser();
+    if (!stored) return;
+
+    getMe()
+      .then((freshUser) => {
         setCurrentUser(freshUser);
-      } catch {
+        localStorage.setItem('siddhi_user', JSON.stringify(freshUser));
+      })
+      .catch(() => {
         logoutApi();
         setCurrentUser(null);
         navigate('/login', { replace: true });
-      }
-    };
-    checkAuth();
+      });
   }, [navigate]);
-
-  const loadData = async () => {
-    if (!currentUser) return;
-    try {
-      const [sData, aData, dData, cData, pData] = await Promise.allSettled([
-        getDashboardStats(),
-        getAppointments(),
-        getDoctors(),
-        getClinics(),
-        getPatients()
-      ]);
-
-      if (sData.status === 'fulfilled') setStats(sData.value);
-      if (aData.status === 'fulfilled') setAppointments(aData.value);
-      if (dData.status === 'fulfilled') setDoctors(dData.value);
-      if (cData.status === 'fulfilled') setClinics(cData.value);
-      if (pData.status === 'fulfilled') setPatients(pData.value);
-    } catch (err) {
-      console.error("Failed to load layout data", err);
-    }
-  };
-
-  useEffect(() => {
-    if (currentUser) {
-      loadData();
-      const interval = setInterval(loadData, 15000);
-      return () => clearInterval(interval);
-    }
-  }, [currentUser?.id, currentUser?.tenant_id]);
 
   const handleLogout = () => {
     logoutApi();

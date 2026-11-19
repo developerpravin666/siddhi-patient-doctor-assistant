@@ -1,6 +1,5 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import {
-  Search,
   Phone,
   Mail,
   UserPlus,
@@ -9,12 +8,12 @@ import {
   CheckCircle2,
   XCircle,
   MapPin,
-  User,
   Filter,
 } from 'lucide-react';
 import { useOutletContext, useNavigate } from 'react-router-dom';
 import { Patient, UserRole, AdminUser, AppContextType } from '../types';
 import { deletePatient, togglePatientStatus } from '../api/client';
+import { DataTable, ColumnDef } from '../components/DataTable';
 
 interface PatientsProps {
   patients?: Patient[];
@@ -31,7 +30,6 @@ export const Patients: React.FC<PatientsProps> = (props) => {
   const userRole = props.userRole || outlet?.userRole || 'RECEPTIONIST';
   const onRefresh = props.onRefresh || outlet?.loadData;
 
-  const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState<'ALL' | 'ACTIVE' | 'INACTIVE'>('ALL');
   const [toastMessage, setToastMessage] = useState<{ text: string; type: 'success' | 'error' } | null>(null);
 
@@ -74,20 +72,139 @@ export const Patients: React.FC<PatientsProps> = (props) => {
     }
   };
 
-  const filtered = patients.filter((p) => {
-    const matchesSearch =
-      p.full_name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      p.mobile_number.includes(searchTerm) ||
-      (p.email && p.email.toLowerCase().includes(searchTerm.toLowerCase()));
+  // Filter by status dropdown
+  const filteredPatients = useMemo(() => {
+    return patients.filter((p) => {
+      const isPatientActive = p.is_active !== false && p.status !== 'INACTIVE';
+      if (statusFilter === 'ACTIVE') return isPatientActive;
+      if (statusFilter === 'INACTIVE') return !isPatientActive;
+      return true;
+    });
+  }, [patients, statusFilter]);
 
-    const isPatientActive = p.is_active !== false && p.status !== 'INACTIVE';
-    const matchesStatus =
-      statusFilter === 'ALL' ||
-      (statusFilter === 'ACTIVE' && isPatientActive) ||
-      (statusFilter === 'INACTIVE' && !isPatientActive);
+  const columns: ColumnDef<Patient>[] = [
+    {
+      key: 'full_name',
+      header: 'Patient Name',
+      sortable: true,
+      searchValue: (p) => `${p.full_name} ${p.mobile_number} ${p.email || ''} ${p.address || ''}`,
+      render: (patient) => (
+        <div className="flex items-center gap-3">
+          <div className="w-8 h-8 rounded-full bg-indigo-50 text-indigo-700 flex items-center justify-center font-bold text-xs shadow-inner">
+            {patient.full_name.charAt(0).toUpperCase()}
+          </div>
+          <div>
+            <p className="font-bold text-slate-900 text-xs sm:text-sm">{patient.full_name}</p>
+            <p className="text-[11px] text-slate-400 font-mono">ID: {patient.id.slice(0, 8)}</p>
+          </div>
+        </div>
+      ),
+    },
+    {
+      key: 'mobile_number',
+      header: 'Contact Info',
+      sortable: true,
+      render: (patient) => (
+        <div className="space-y-0.5">
+          <div className="flex items-center gap-1.5 font-medium text-slate-700">
+            <Phone className="w-3 h-3 text-slate-400" />
+            <span>{patient.mobile_number}</span>
+          </div>
+          {patient.email && (
+            <div className="flex items-center gap-1.5 text-slate-400 text-[11px]">
+              <Mail className="w-3 h-3 text-slate-400" />
+              <span>{patient.email}</span>
+            </div>
+          )}
+        </div>
+      ),
+    },
+    {
+      key: 'age',
+      header: 'Demographics',
+      sortable: true,
+      render: (patient) => (
+        <div className="text-slate-600 text-xs">
+          {patient.age ? `${patient.age} yrs` : 'Age N/A'}
+          {patient.gender && <span className="text-slate-400 ml-1.5 capitalize">({patient.gender.toLowerCase()})</span>}
+        </div>
+      ),
+    },
+    {
+      key: 'address',
+      header: 'Address',
+      sortable: false,
+      render: (patient) => (
+        <div className="text-slate-500 text-xs max-w-xs truncate">
+          {patient.address ? (
+            <span className="flex items-center gap-1">
+              <MapPin className="w-3 h-3 text-slate-400 flex-shrink-0" />
+              <span className="truncate">{patient.address}</span>
+            </span>
+          ) : (
+            <span className="text-slate-300 italic">Not provided</span>
+          )}
+        </div>
+      ),
+    },
+    {
+      key: 'is_active',
+      header: 'Status',
+      sortable: true,
+      render: (patient) => {
+        const isActive = patient.is_active !== false && patient.status !== 'INACTIVE';
+        return (
+          <span
+            className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-semibold ${
+              isActive ? 'bg-emerald-50 text-emerald-700 border border-emerald-200' : 'bg-slate-100 text-slate-600 border border-slate-200'
+            }`}
+          >
+            {isActive ? <CheckCircle2 className="w-3 h-3 text-emerald-600" /> : <XCircle className="w-3 h-3 text-slate-400" />}
+            {isActive ? 'Active' : 'Inactive'}
+          </span>
+        );
+      },
+    },
+    {
+      key: 'actions',
+      header: 'Actions',
+      sortable: false,
+      align: 'right',
+      render: (patient) => (
+        <div className="flex items-center justify-end gap-1.5">
+          {canManage && (
+            <button
+              onClick={() => handleToggleStatus(patient)}
+              title={patient.is_active ? 'Mark Inactive' : 'Mark Active'}
+              className="px-2 py-1 text-[11px] font-semibold rounded-lg border border-slate-200 hover:bg-slate-50 text-slate-600 transition"
+            >
+              {patient.is_active ? 'Deactivate' : 'Activate'}
+            </button>
+          )}
 
-    return matchesSearch && matchesStatus;
-  });
+          {canManage && (
+            <button
+              onClick={() => navigate(`/patients/${patient.id}/edit`)}
+              title="Edit Patient Profile"
+              className="p-1.5 text-slate-500 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg border border-transparent hover:border-indigo-200 transition"
+            >
+              <Edit2 className="w-3.5 h-3.5" />
+            </button>
+          )}
+
+          {canDelete && (
+            <button
+              onClick={() => handleDelete(patient)}
+              title="Delete Patient Record"
+              className="p-1.5 text-slate-500 hover:text-rose-600 hover:bg-rose-50 rounded-lg border border-transparent hover:border-rose-200 transition"
+            >
+              <Trash2 className="w-3.5 h-3.5" />
+            </button>
+          )}
+        </div>
+      ),
+    },
+  ];
 
   return (
     <div className="space-y-6">
@@ -107,208 +224,40 @@ export const Patients: React.FC<PatientsProps> = (props) => {
         </div>
       )}
 
-      {/* Header Banner & Controls */}
-      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
-        <div>
-          <h2 className="text-xl font-bold text-slate-900 flex items-center gap-2">
-            <User className="w-5 h-5 text-indigo-600" />
-            Patients Directory
-          </h2>
-          <p className="text-xs text-slate-500">
-            Manage patient records, contact information, active/inactive statuses, and WhatsApp notifications
-          </p>
-        </div>
-
-        <div className="flex items-center gap-3 w-full sm:w-auto">
-          {/* Status Filter */}
-          <div className="flex items-center bg-white border border-slate-200 rounded-xl p-1 text-xs font-semibold">
-            <Filter className="w-3.5 h-3.5 text-slate-400 ml-2 mr-1" />
-            <button
-              onClick={() => setStatusFilter('ALL')}
-              className={`px-2.5 py-1 rounded-lg transition ${
-                statusFilter === 'ALL' ? 'bg-slate-900 text-white' : 'text-slate-600 hover:text-slate-900'
-              }`}
+      {/* Main Grid with Searching, Sorting, and Paging */}
+      <DataTable<Patient>
+        title="Patients Directory"
+        subtitle="Manage patient records, contact information, active/inactive statuses, and WhatsApp notifications"
+        data={filteredPatients}
+        columns={columns}
+        searchPlaceholder="Search patients by name, phone, or email..."
+        emptyMessage="No patients found matching your search criteria."
+        defaultPageSize={10}
+        initialSortKey="full_name"
+        extraFilters={
+          <div className="flex items-center gap-1.5">
+            <Filter className="w-3.5 h-3.5 text-slate-400" />
+            <select
+              value={statusFilter}
+              onChange={(e) => setStatusFilter(e.target.value as any)}
+              className="py-1.5 px-2.5 border border-slate-200 rounded-xl text-xs bg-white text-slate-700 focus:outline-none focus:ring-2 focus:ring-brand-500/20 focus:border-brand-500"
             >
-              All ({patients.length})
-            </button>
-            <button
-              onClick={() => setStatusFilter('ACTIVE')}
-              className={`px-2.5 py-1 rounded-lg transition ${
-                statusFilter === 'ACTIVE' ? 'bg-emerald-600 text-white' : 'text-slate-600 hover:text-slate-900'
-              }`}
-            >
-              Active
-            </button>
-            <button
-              onClick={() => setStatusFilter('INACTIVE')}
-              className={`px-2.5 py-1 rounded-lg transition ${
-                statusFilter === 'INACTIVE' ? 'bg-rose-600 text-white' : 'text-slate-600 hover:text-slate-900'
-              }`}
-            >
-              Inactive
-            </button>
+              <option value="ALL">All Statuses</option>
+              <option value="ACTIVE">Active Only</option>
+              <option value="INACTIVE">Inactive Only</option>
+            </select>
           </div>
-
-          {canManage && (
-            <button
-              onClick={() => navigate('/patients/new')}
-              className="px-4 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-sm transition shadow-sm flex items-center gap-2 shrink-0"
-            >
-              <UserPlus className="w-4 h-4" /> Add Patient
-            </button>
-          )}
-        </div>
-      </div>
-
-      {/* Search Input */}
-      <div className="relative w-full max-w-md">
-        <Search className="w-4 h-4 absolute left-3.5 top-3 text-slate-400" />
-        <input
-          type="text"
-          value={searchTerm}
-          onChange={(e) => setSearchTerm(e.target.value)}
-          placeholder="Search patient by name, mobile, or email..."
-          className="w-full pl-10 pr-4 py-2 rounded-xl border border-slate-200 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 bg-white"
-        />
-      </div>
-
-      {/* Patients Table Card */}
-      <div className="bg-white rounded-2xl border border-slate-200/80 shadow-sm overflow-hidden">
-        {filtered.length === 0 ? (
-          <div className="text-center py-16 text-slate-400 text-sm space-y-2">
-            <User className="w-10 h-10 mx-auto text-slate-300" />
-            <p className="font-semibold text-slate-600">No patients matching your search</p>
-            <p className="text-xs text-slate-400">
-              {searchTerm ? 'Try adjusting your search query or status filter.' : 'Click "Add Patient" to register new records!'}
-            </p>
-          </div>
-        ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full text-left border-collapse">
-              <thead>
-                <tr className="bg-slate-50/75 border-b border-slate-200 text-slate-500 text-[11px] font-bold uppercase tracking-wider">
-                  <th className="py-3.5 px-4">Patient Profile</th>
-                  <th className="py-3.5 px-4">Mobile & WhatsApp</th>
-                  <th className="py-3.5 px-4">Demographics</th>
-                  <th className="py-3.5 px-4">Status & State</th>
-                  <th className="py-3.5 px-4">Registered</th>
-                  <th className="py-3.5 px-4 text-right">Actions</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-100 text-sm">
-                {filtered.map((patient) => {
-                  const isPatientActive = patient.is_active !== false && patient.status !== 'INACTIVE';
-
-                  return (
-                    <tr key={patient.id} className="hover:bg-slate-50/60 transition">
-                      {/* Name & Initials */}
-                      <td className="py-3.5 px-4">
-                        <div className="flex items-center space-x-3">
-                          <div className="w-9 h-9 rounded-xl bg-gradient-to-tr from-indigo-600 to-sky-400 text-white font-bold flex items-center justify-center text-xs shadow-sm shrink-0">
-                            {patient.full_name.charAt(0).toUpperCase()}
-                          </div>
-                          <div>
-                            <span className="font-bold text-slate-900 block">{patient.full_name}</span>
-                            {patient.email ? (
-                              <span className="text-[11px] text-slate-500 flex items-center gap-1">
-                                <Mail className="w-3 h-3 text-slate-400" /> {patient.email}
-                              </span>
-                            ) : (
-                              <span className="text-[10px] text-slate-400 italic">No email on file</span>
-                            )}
-                          </div>
-                        </div>
-                      </td>
-
-                      {/* Phone */}
-                      <td className="py-3.5 px-4 text-slate-700 font-medium">
-                        <div className="flex items-center gap-1.5">
-                          <Phone className="w-3.5 h-3.5 text-emerald-600" />
-                          <span className="font-mono text-xs font-semibold">{patient.mobile_number}</span>
-                        </div>
-                      </td>
-
-                      {/* Demographics: Gender, Age, Address */}
-                      <td className="py-3.5 px-4 text-xs text-slate-600">
-                        <div className="space-y-0.5">
-                          <span>
-                            {patient.gender || 'Unspecified'}
-                            {patient.age ? ` • ${patient.age} yrs` : ''}
-                          </span>
-                          {patient.address && (
-                            <span className="text-[11px] text-slate-400 flex items-center gap-1 truncate max-w-[180px]">
-                              <MapPin className="w-3 h-3 text-slate-400 shrink-0" /> {patient.address}
-                            </span>
-                          )}
-                        </div>
-                      </td>
-
-                      {/* Active/Inactive Status Toggle Button */}
-                      <td className="py-3.5 px-4">
-                        <button
-                          onClick={() => canManage && handleToggleStatus(patient)}
-                          disabled={!canManage}
-                          className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-bold transition shadow-sm ${
-                            isPatientActive
-                              ? 'bg-emerald-100 text-emerald-800 border border-emerald-200 hover:bg-emerald-200'
-                              : 'bg-rose-100 text-rose-800 border border-rose-200 hover:bg-rose-200'
-                          } ${!canManage ? 'cursor-default' : 'cursor-pointer'}`}
-                          title={canManage ? 'Click to toggle Active / Inactive' : undefined}
-                        >
-                          {isPatientActive ? (
-                            <>
-                              <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
-                              <span>Active</span>
-                            </>
-                          ) : (
-                            <>
-                              <XCircle className="w-3.5 h-3.5 text-rose-600" />
-                              <span>Inactive</span>
-                            </>
-                          )}
-                        </button>
-                      </td>
-
-                      {/* Registration Date */}
-                      <td className="py-3.5 px-4 text-xs text-slate-500 font-medium">
-                        {new Date(patient.created_at).toLocaleDateString(undefined, {
-                          year: 'numeric',
-                          month: 'short',
-                          day: 'numeric',
-                        })}
-                      </td>
-
-                      {/* Action buttons (Edit & Delete) */}
-                      <td className="py-3.5 px-4 text-right">
-                        <div className="flex items-center justify-end gap-1.5">
-                          {canManage && (
-                            <button
-                              onClick={() => navigate(`/patients/${patient.id}/edit`)}
-                              className="p-1.5 text-slate-500 hover:text-indigo-600 hover:bg-slate-100 rounded-lg transition"
-                              title="Edit Patient Information"
-                            >
-                              <Edit2 className="w-3.5 h-3.5" />
-                            </button>
-                          )}
-                          {canDelete && (
-                            <button
-                              onClick={() => handleDelete(patient)}
-                              className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition"
-                              title="Delete Patient Record"
-                            >
-                              <Trash2 className="w-3.5 h-3.5" />
-                            </button>
-                          )}
-                        </div>
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
-        )}
-      </div>
+        }
+        actionButton={
+          <button
+            onClick={() => navigate('/patients/new')}
+            className="px-3.5 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs transition shadow-sm flex items-center gap-1.5"
+          >
+            <UserPlus className="w-3.5 h-3.5" />
+            <span>Add Patient</span>
+          </button>
+        }
+      />
     </div>
   );
 };
