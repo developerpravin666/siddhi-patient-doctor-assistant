@@ -25,6 +25,7 @@ share/python-wheels/
 .installed.cfg
 *.egg
 MANIFEST
+backend/tests/
 
 # PyInstaller
 #   Usually these files are written by a python script from a template
@@ -158,6 +159,13 @@ venv/
 ENV/
 env.bak/
 venv.bak/
+backend/venv/
+node_modules/
+frontend/node_modules/
+frontend/dist/
+*.db
+*.sqlite
+*.sqlite3
 
 # Conda environments
 conda-meta/
