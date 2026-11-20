@@ -5,8 +5,12 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "tsc && vite build",
-    "preview": "vite preview"
+    "build": "tsc -b && vite build",
+    "preview": "vite preview",
+    "lint": "eslint .",
+    "build:staging": "vite build --mode staging",
+    "build:prod": "vite build --mode production",
+    "test:accounting-ui": "playwright test"
   },
   "dependencies": {
     "axios": "^1.7.9",
