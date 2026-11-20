@@ -16,6 +16,7 @@ import {
 import { z } from 'zod';
 import { getUser, createUser, updateUser } from '../api/client';
 import { UserRole, ScreenPermissions, AppContextType } from '../types';
+import { SearchableSelect } from '../components/SearchableSelect';
 
 const DEFAULT_FRONTDESK_PERMISSIONS: ScreenPermissions = {
   appointments: { view: true, create: true, edit: true, delete: false },
@@ -312,20 +313,19 @@ export const UserForm: React.FC = () => {
               <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5">
                 Account Role <span className="text-rose-500">*</span>
               </label>
-              <select
+              <SearchableSelect
                 value={role}
-                onChange={(e) => setRole(e.target.value as UserRole)}
+                onChange={(val) => setRole(val as UserRole)}
                 disabled={currentUserRole === 'CLINIC_ADMIN' && role !== 'RECEPTIONIST'}
-                className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 bg-white"
-              >
-                <option value="RECEPTIONIST">Receptionist / Front Desk (Custom Permissions)</option>
-                {currentUserRole === 'SUPER_ADMIN' && (
-                  <>
-                    <option value="CLINIC_ADMIN">Clinic Admin / Doctor (Full Clinic Access)</option>
-                    <option value="SUPER_ADMIN">Super Admin (Product Owner)</option>
-                  </>
-                )}
-              </select>
+                searchable={false}
+                options={[
+                  { value: 'RECEPTIONIST', label: 'Receptionist / Front Desk (Custom Permissions)' },
+                  ...(currentUserRole === 'SUPER_ADMIN' ? [
+                    { value: 'CLINIC_ADMIN', label: 'Clinic Admin / Doctor (Full Clinic Access)' },
+                    { value: 'SUPER_ADMIN', label: 'Super Admin (Product Owner)' },
+                  ] : []),
+                ]}
+              />
               <p className="text-[11px] text-slate-400 mt-1">
                 {role === 'RECEPTIONIST' 
                   ? 'Front Desk users have configurable screen and action access.'

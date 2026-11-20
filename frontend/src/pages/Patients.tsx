@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect, useCallback } from 'react';
 import {
   Phone,
   Mail,
@@ -8,12 +8,14 @@ import {
   CheckCircle2,
   XCircle,
   MapPin,
-  Filter,
+  RefreshCw,
+  AlertCircle
 } from 'lucide-react';
 import { useOutletContext, useNavigate } from 'react-router-dom';
 import { Patient, UserRole, AdminUser, AppContextType } from '../types';
-import { deletePatient, togglePatientStatus } from '../api/client';
+import { getPatients, deletePatient, togglePatientStatus } from '../api/client';
 import { DataTable, ColumnDef } from '../components/DataTable';
+import { SearchableSelect } from '../components/SearchableSelect';
 import { useConfirm } from '../context/ConfirmationContext';
 
 interface PatientsProps {
@@ -21,19 +23,115 @@ interface PatientsProps {
   currentUser?: AdminUser | null;
   userRole?: UserRole;
   onRefresh?: () => void;
+  defaultMode?: 'server' | 'client';
 }
 
 export const Patients: React.FC<PatientsProps> = (props) => {
   const navigate = useNavigate();
   const outlet = useOutletContext<AppContextType>();
-  const patients = props.patients || outlet?.patients || [];
+
+  // Mode: server (default) or client
+  const [gridMode] = useState<'server' | 'client'>(props.defaultMode || 'server');
+
+  const [page, setPage] = useState<number>(1);
+  const [pageSize, setPageSize] = useState<number>(10);
+  const [sortKey, setSortKey] = useState<string | null>('full_name');
+  const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc');
+  const [searchTerm, setSearchTerm] = useState<string>('');
+  const [totalCount, setTotalCount] = useState<number>(0);
+
+  const [patientsList, setPatientsList] = useState<Patient[]>(props.patients || []);
+  const [loading, setLoading] = useState<boolean>(!props.patients);
+  const [error, setError] = useState<string | null>(null);
+
+  const patients = props.patients || patientsList;
   const currentUser = props.currentUser !== undefined ? props.currentUser : outlet?.currentUser;
   const userRole = props.userRole || outlet?.userRole || 'RECEPTIONIST';
-  const onRefresh = props.onRefresh || outlet?.loadData;
 
   const [statusFilter, setStatusFilter] = useState<'ALL' | 'ACTIVE' | 'INACTIVE'>('ALL');
   const [toastMessage, setToastMessage] = useState<{ text: string; type: 'success' | 'error' } | null>(null);
   const confirm = useConfirm();
+
+  const fetchPatients = useCallback(async (overrides?: {
+    statusFilter?: string;
+    search?: string;
+    sortKey?: string | null;
+    sortDir?: 'asc' | 'desc';
+    page?: number;
+    pageSize?: number;
+    mode?: 'server' | 'client';
+  }) => {
+    try {
+      setLoading(true);
+      setError(null);
+
+      const effMode = overrides?.mode || gridMode;
+      const effStatus = overrides?.statusFilter !== undefined ? overrides.statusFilter : statusFilter;
+      const effSearch = overrides?.search !== undefined ? overrides.search : searchTerm;
+      const effSortKey = overrides?.sortKey !== undefined ? overrides.sortKey : sortKey;
+      const effSortDir = overrides?.sortDir !== undefined ? overrides.sortDir : sortDir;
+      const effPage = overrides?.page !== undefined ? overrides.page : page;
+      const effPageSize = overrides?.pageSize !== undefined ? overrides.pageSize : pageSize;
+
+      const params: any = {};
+      if (effStatus && effStatus !== 'ALL') params.status_filter = effStatus;
+
+      if (effMode === 'server') {
+        if (effSearch) params.search = effSearch;
+        if (effSortKey) params.sort_by = effSortKey;
+        if (effSortDir) params.sort_dir = effSortDir;
+        params.page = effPage;
+        params.page_size = effPageSize;
+      }
+
+      const data = await getPatients(params);
+      setPatientsList(data);
+      setTotalCount((data as any).total ?? data.length);
+    } catch (err: any) {
+      console.error('Failed to load patients:', err);
+      setError(err.response?.data?.detail || 'Failed to load patients');
+    } finally {
+      setLoading(false);
+    }
+  }, [gridMode, statusFilter, searchTerm, sortKey, sortDir, page, pageSize]);
+
+  useEffect(() => {
+    if (!props.patients) {
+      fetchPatients();
+    }
+  }, [statusFilter, gridMode]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const handleRefresh = () => {
+    if (props.onRefresh) {
+      props.onRefresh();
+    } else {
+      fetchPatients();
+    }
+  };
+
+  const handleDataTableParamsChange = (params: {
+    page: number;
+    pageSize: number;
+    sortKey: string | null;
+    sortDir: 'asc' | 'desc';
+    search: string;
+  }) => {
+    setPage(params.page);
+    setPageSize(params.pageSize);
+    setSortKey(params.sortKey);
+    setSortDir(params.sortDir);
+    setSearchTerm(params.search);
+
+    if (gridMode === 'server') {
+      fetchPatients({
+        page: params.page,
+        pageSize: params.pageSize,
+        sortKey: params.sortKey,
+        sortDir: params.sortDir,
+        search: params.search,
+      });
+    }
+  };
 
   const canManage =
     userRole === 'SUPER_ADMIN' ||
@@ -55,7 +153,7 @@ export const Patients: React.FC<PatientsProps> = (props) => {
     try {
       await togglePatientStatus(patient.id, nextStatus);
       showToast(`Patient ${patient.full_name} status updated to ${nextStatus ? 'Active' : 'Inactive'}.`, 'success');
-      if (onRefresh) onRefresh();
+      handleRefresh();
     } catch (err: any) {
       showToast(err.response?.data?.detail || 'Failed to update patient status', 'error');
     }
@@ -75,7 +173,7 @@ export const Patients: React.FC<PatientsProps> = (props) => {
     try {
       await deletePatient(patient.id);
       showToast(`Patient ${patient.full_name} deleted successfully.`, 'success');
-      if (onRefresh) onRefresh();
+      handleRefresh();
     } catch (err: any) {
       showToast(err.response?.data?.detail || 'Failed to delete patient', 'error');
     }
@@ -233,38 +331,77 @@ export const Patients: React.FC<PatientsProps> = (props) => {
         </div>
       )}
 
+      {/* Error Alert */}
+      {error && (
+        <div className="p-4 rounded-xl bg-rose-50 border border-rose-200 text-rose-800 text-sm flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <AlertCircle className="w-4 h-4 text-rose-600 shrink-0" />
+            <span>{error}</span>
+          </div>
+          <button onClick={() => fetchPatients()} className="text-xs font-bold underline hover:text-rose-900">
+            Retry
+          </button>
+        </div>
+      )}
+
       {/* Main Grid with Searching, Sorting, and Paging */}
       <DataTable<Patient>
         title="Patients Directory"
         subtitle="Manage patient records, contact information, active/inactive statuses, and WhatsApp notifications"
-        data={filteredPatients}
+        data={gridMode === 'server' ? patients : filteredPatients}
         columns={columns}
+        keyExtractor={(p) => p.id}
+        loading={loading}
         searchPlaceholder="Search patients by name, phone, or email..."
+        mode={gridMode}
+        totalCount={totalCount}
+        page={page}
+        pageSize={pageSize}
+        sortKey={sortKey}
+        sortDir={sortDir}
+        searchTerm={searchTerm}
+        onParamsChange={handleDataTableParamsChange}
         emptyMessage="No patients found matching your search criteria."
         defaultPageSize={10}
         initialSortKey="full_name"
         extraFilters={
-          <div className="flex items-center gap-1.5">
-            <Filter className="w-3.5 h-3.5 text-slate-400" />
-            <select
+          <div className="w-44">
+            <SearchableSelect
+              size="sm"
+              placeholder="Filter by Status"
               value={statusFilter}
-              onChange={(e) => setStatusFilter(e.target.value as any)}
-              className="py-1.5 px-2.5 border border-slate-200 rounded-xl text-xs bg-white text-slate-700 focus:outline-none focus:ring-2 focus:ring-brand-500/20 focus:border-brand-500"
-            >
-              <option value="ALL">All Statuses</option>
-              <option value="ACTIVE">Active Only</option>
-              <option value="INACTIVE">Inactive Only</option>
-            </select>
+              onChange={(val) => {
+                setStatusFilter(val as any);
+                setPage(1);
+                fetchPatients({ statusFilter: val, page: 1 });
+              }}
+              options={[
+                { value: 'ALL', label: 'All Statuses' },
+                { value: 'ACTIVE', label: 'Active Only' },
+                { value: 'INACTIVE', label: 'Inactive Only' }
+              ]}
+              searchable={false}
+            />
           </div>
         }
         actionButton={
-          <button
-            onClick={() => navigate('/patients/new')}
-            className="px-3.5 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs transition shadow-sm flex items-center gap-1.5"
-          >
-            <UserPlus className="w-3.5 h-3.5" />
-            <span>Add Patient</span>
-          </button>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={handleRefresh}
+              disabled={loading}
+              className="p-2.5 rounded-xl border border-slate-200 text-slate-600 hover:bg-slate-50 transition disabled:opacity-50"
+              title="Refresh Patients"
+            >
+              <RefreshCw className={`w-3.5 h-3.5 ${loading ? 'animate-spin text-indigo-600' : ''}`} />
+            </button>
+            <button
+              onClick={() => navigate('/patients/new')}
+              className="px-3.5 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs transition shadow-sm flex items-center gap-1.5"
+            >
+              <UserPlus className="w-3.5 h-3.5" />
+              <span>Add Patient</span>
+            </button>
+          </div>
         }
       />
     </div>

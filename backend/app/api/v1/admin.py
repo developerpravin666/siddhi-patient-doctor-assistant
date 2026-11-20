@@ -1,8 +1,8 @@
 import logging
 import json
 from typing import List, Dict, Any, Optional
-from fastapi import APIRouter, Depends, HTTPException, Query, status
-from sqlalchemy import select, text
+from fastapi import APIRouter, Depends, HTTPException, Query, status, Response
+from sqlalchemy import select, text, func, asc, desc, or_, and_
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.config import settings
 from app.core.database import get_db, sanitize_schema_name, provision_tenant_schema, is_postgres
@@ -43,10 +43,60 @@ async def get_admin_dashboard_stats(
 # -----------------------------------------------------------------------------
 @router.get("/tenants", response_model=List[TenantOut])
 async def list_tenants(
+    response: Response,
+    search: Optional[str] = Query(None, description="Search clinic name, owner, phone, or email"),
+    status_filter: Optional[str] = Query(None, description="ACTIVE, SUSPENDED, INACTIVE"),
+    sort_by: Optional[str] = Query(None, description="Column to sort by"),
+    sort_dir: Optional[str] = Query("desc", description="asc or desc"),
+    page: Optional[int] = Query(None, ge=1),
+    page_size: Optional[int] = Query(None, ge=1),
+    limit: Optional[int] = None,
+    offset: Optional[int] = None,
     db_session: AsyncSession = Depends(get_db),
     current_user: AdminUser = Depends(require_roles(["SUPER_ADMIN"]))
 ):
     stmt = select(Tenant)
+    conditions = []
+    if search:
+        s = f"%{search}%"
+        conditions.append(or_(
+            Tenant.name.ilike(s),
+            Tenant.owner_name.ilike(s),
+            Tenant.owner_email.ilike(s),
+            Tenant.owner_phone.ilike(s),
+            Tenant.schema_name.ilike(s)
+        ))
+    if status_filter and status_filter != 'ALL':
+        conditions.append(Tenant.status == status_filter.upper())
+
+    if conditions:
+        stmt = stmt.where(and_(*conditions))
+
+    # Count total
+    count_stmt = select(func.count(Tenant.id))
+    if conditions:
+        count_stmt = count_stmt.where(and_(*conditions))
+    c_res = await db_session.execute(count_stmt)
+    total_count = c_res.scalar_one_or_none() or 0
+    response.headers["X-Total-Count"] = str(total_count)
+
+    # Sort
+    is_asc = (sort_dir or "").lower() == "asc"
+    if sort_by == "name":
+        stmt = stmt.order_by(asc(Tenant.name) if is_asc else desc(Tenant.name))
+    elif sort_by == "owner_name":
+        stmt = stmt.order_by(asc(Tenant.owner_name) if is_asc else desc(Tenant.owner_name))
+    elif sort_by == "status":
+        stmt = stmt.order_by(asc(Tenant.status) if is_asc else desc(Tenant.status))
+    else:
+        stmt = stmt.order_by(asc(Tenant.created_at) if is_asc else desc(Tenant.created_at))
+
+    # Pagination
+    if page is not None and page_size is not None:
+        stmt = stmt.limit(page_size).offset((page - 1) * page_size)
+    elif limit is not None:
+        stmt = stmt.limit(limit).offset(offset or 0)
+
     result = await db_session.execute(stmt)
     return result.scalars().all()
 
@@ -70,8 +120,12 @@ async def create_tenant(
         status=payload.status
     )
     db_session.add(tenant)
+    await db_session.flush()
     await db_session.commit()
-    await db_session.refresh(tenant)
+    try:
+        await db_session.refresh(tenant)
+    except Exception:
+        pass
 
     # 1. Automatically provision initial clinic profile inside the new tenant schema
     clinic_id = f"clinic_{tenant.id[:8]}"
@@ -200,8 +254,12 @@ async def update_tenant(
     if payload.status is not None:
         tenant.status = payload.status
 
+    await db_session.flush()
     await db_session.commit()
-    await db_session.refresh(tenant)
+    try:
+        await db_session.refresh(tenant)
+    except Exception:
+        pass
     return tenant
 
 
@@ -211,16 +269,63 @@ async def update_tenant(
 # -----------------------------------------------------------------------------
 @router.get("/users", response_model=List[AdminUserOut])
 async def list_users(
+    response: Response,
     tenant_id: Optional[str] = None,
+    search: Optional[str] = Query(None, description="Search by full name or username"),
+    role: Optional[str] = Query(None, description="SUPER_ADMIN, CLINIC_ADMIN, RECEPTIONIST"),
+    sort_by: Optional[str] = Query(None, description="Column to sort by"),
+    sort_dir: Optional[str] = Query("asc", description="asc or desc"),
+    page: Optional[int] = Query(None, ge=1),
+    page_size: Optional[int] = Query(None, ge=1),
+    limit: Optional[int] = None,
+    offset: Optional[int] = None,
     db_session: AsyncSession = Depends(get_db),
     current_user: AdminUser = Depends(require_roles(["SUPER_ADMIN", "CLINIC_ADMIN"]))
 ):
     stmt = select(AdminUser)
+    conditions = []
+
     if current_user.role == "CLINIC_ADMIN":
-        # Clinic admin only sees staff under their clinic tenant
-        stmt = stmt.where(AdminUser.tenant_id == current_user.tenant_id)
+        conditions.append(AdminUser.tenant_id == current_user.tenant_id)
     elif tenant_id:
-        stmt = stmt.where(AdminUser.tenant_id == tenant_id)
+        conditions.append(AdminUser.tenant_id == tenant_id)
+
+    if role and role != 'ALL':
+        conditions.append(AdminUser.role == role.upper())
+
+    if search:
+        s = f"%{search}%"
+        conditions.append(or_(AdminUser.full_name.ilike(s), AdminUser.username.ilike(s)))
+
+    if conditions:
+        stmt = stmt.where(and_(*conditions))
+
+    # Count total
+    count_stmt = select(func.count(AdminUser.id))
+    if conditions:
+        count_stmt = count_stmt.where(and_(*conditions))
+    c_res = await db_session.execute(count_stmt)
+    total_count = c_res.scalar_one_or_none() or 0
+    response.headers["X-Total-Count"] = str(total_count)
+
+    # Sorting
+    is_asc = (sort_dir or "").lower() == "asc"
+    if sort_by == "username":
+        stmt = stmt.order_by(asc(AdminUser.username) if is_asc else desc(AdminUser.username))
+    elif sort_by == "role":
+        stmt = stmt.order_by(asc(AdminUser.role) if is_asc else desc(AdminUser.role))
+    elif sort_by == "is_active":
+        stmt = stmt.order_by(asc(AdminUser.is_active) if is_asc else desc(AdminUser.is_active))
+    elif sort_by == "created_at":
+        stmt = stmt.order_by(asc(AdminUser.created_at) if is_asc else desc(AdminUser.created_at))
+    else:
+        stmt = stmt.order_by(asc(AdminUser.full_name) if is_asc else desc(AdminUser.full_name))
+
+    # Pagination
+    if page is not None and page_size is not None:
+        stmt = stmt.limit(page_size).offset((page - 1) * page_size)
+    elif limit is not None:
+        stmt = stmt.limit(limit).offset(offset or 0)
 
     result = await db_session.execute(stmt)
     return result.scalars().all()
@@ -339,8 +444,12 @@ async def update_user(
     if payload.password is not None and len(payload.password) >= 6:
         user.hashed_password = get_password_hash(payload.password)
 
+    await db_session.flush()
     await db_session.commit()
-    await db_session.refresh(user)
+    try:
+        await db_session.refresh(user)
+    except Exception:
+        pass
 
     # Sync updates to tenant schema table
     tenant_schema = await resolve_user_tenant_schema(current_user, db_session)
@@ -559,8 +668,14 @@ async def create_clinic(
         consultation_hours=payload.consultation_hours
     )
     db_session.add(clinic)
+    await db_session.flush()
     await db_session.commit()
-    await db_session.refresh(clinic)
+    if is_postgres():
+        await db_session.execute(text(f'SET search_path TO "{tenant_schema}", public;'))
+    try:
+        await db_session.refresh(clinic)
+    except Exception:
+        pass
     return clinic
 
 
@@ -571,6 +686,7 @@ async def update_clinic(
     db_session: AsyncSession = Depends(get_db),
     current_user: AdminUser = Depends(require_roles(["SUPER_ADMIN", "CLINIC_ADMIN"]))
 ):
+    tenant_schema = "public"
     if is_postgres():
         tenant_schema = await resolve_user_tenant_schema(current_user, db_session)
         await db_session.execute(text(f'SET search_path TO "{tenant_schema}", public;'))
@@ -597,8 +713,14 @@ async def update_clinic(
     if payload.whatsapp_phone_number_id is not None:
         clinic.whatsapp_phone_number_id = payload.whatsapp_phone_number_id
 
+    await db_session.flush()
     await db_session.commit()
-    await db_session.refresh(clinic)
+    if is_postgres():
+        await db_session.execute(text(f'SET search_path TO "{tenant_schema}", public;'))
+    try:
+        await db_session.refresh(clinic)
+    except Exception:
+        pass
     return clinic
 
 
@@ -680,7 +802,17 @@ async def find_doctor_and_schema(
 # -----------------------------------------------------------------------------
 @router.get("/doctors", response_model=List[DoctorOut])
 async def list_doctors(
+    response: Response,
     clinic_id: Optional[str] = None,
+    search: Optional[str] = Query(None, description="Search by doctor name or specialty"),
+    specialty: Optional[str] = Query(None, description="Filter by specialty"),
+    is_active: Optional[bool] = Query(None, description="Filter by active status"),
+    sort_by: Optional[str] = Query(None, description="Column to sort by"),
+    sort_dir: Optional[str] = Query("asc", description="asc or desc"),
+    page: Optional[int] = Query(None, ge=1),
+    page_size: Optional[int] = Query(None, ge=1),
+    limit: Optional[int] = None,
+    offset: Optional[int] = None,
     current_user: AdminUser = Depends(require_permission("doctors", "view")),
     db_session: AsyncSession = Depends(get_db)
 ):
@@ -691,36 +823,90 @@ async def list_doctors(
         if c_schema:
             tenant_schema = c_schema
 
-    schemas_to_check = [tenant_schema] if tenant_schema and tenant_schema != "public" else []
-    if is_postgres():
-        try:
-            t_res = await db_session.execute(text("SELECT schema_name FROM public.tenants WHERE status='ACTIVE' ORDER BY created_at ASC;"))
-            for (s_name,) in t_res.fetchall():
-                safe = sanitize_schema_name(s_name)
-                if safe not in schemas_to_check:
-                    schemas_to_check.append(safe)
-        except Exception:
-            pass
+    safe_schema = sanitize_schema_name(tenant_schema) if tenant_schema and tenant_schema != "public" else None
+
+    if current_user.role != "SUPER_ADMIN" and safe_schema:
+        schemas_to_check = [safe_schema]
+    else:
+        schemas_to_check = [safe_schema] if safe_schema else []
+        if is_postgres():
+            try:
+                t_res = await db_session.execute(text("SELECT schema_name FROM public.tenants WHERE status='ACTIVE' ORDER BY created_at ASC;"))
+                for (s_name,) in t_res.fetchall():
+                    safe = sanitize_schema_name(s_name)
+                    if safe not in schemas_to_check:
+                        schemas_to_check.append(safe)
+            except Exception:
+                pass
 
     if not schemas_to_check:
         schemas_to_check = ["public"]
 
-    stmt = select(Doctor)
+    conditions = []
     if clinic_id:
-        stmt = stmt.where(Doctor.clinic_id == clinic_id)
+        conditions.append(Doctor.clinic_id == clinic_id)
+    if search:
+        s = f"%{search}%"
+        conditions.append(or_(Doctor.name.ilike(s), Doctor.specialty.ilike(s)))
+    if specialty and specialty != 'ALL':
+        conditions.append(Doctor.specialty.ilike(f"%{specialty}%"))
+    if is_active is not None:
+        conditions.append(Doctor.is_active == is_active)
+
+    # Sorting
+    is_asc = (sort_dir or "").lower() == "asc"
+    if sort_by == "specialty":
+        order_clause = asc(Doctor.specialty) if is_asc else desc(Doctor.specialty)
+    elif sort_by == "is_active":
+        order_clause = asc(Doctor.is_active) if is_asc else desc(Doctor.is_active)
+    elif sort_by == "created_at":
+        order_clause = asc(Doctor.created_at) if is_asc else desc(Doctor.created_at)
+    else:
+        order_clause = asc(Doctor.name) if is_asc else desc(Doctor.name)
+
+    # Pagination calculation
+    calc_limit: Optional[int] = None
+    calc_offset: Optional[int] = None
+    if page is not None and page_size is not None:
+        calc_limit = page_size
+        calc_offset = (page - 1) * page_size
+    elif limit is not None:
+        calc_limit = limit
+        calc_offset = offset or 0
+
+    total_count = 0
 
     for s_name in schemas_to_check:
         if is_postgres():
             await db_session.execute(text(f'SET search_path TO "{s_name}", public;'))
         try:
             async with db_session.begin_nested():
-                res = await db_session.execute(stmt)
+                # Count total matching records in this schema
+                count_stmt = select(func.count(Doctor.id))
+                if conditions:
+                    count_stmt = count_stmt.where(and_(*conditions))
+                c_res = await db_session.execute(count_stmt)
+                schema_count = c_res.scalar_one_or_none() or 0
+                total_count += schema_count
+
+                # Query data slice
+                data_stmt = select(Doctor)
+                if conditions:
+                    data_stmt = data_stmt.where(and_(*conditions))
+                data_stmt = data_stmt.order_by(order_clause)
+                if calc_limit is not None:
+                    data_stmt = data_stmt.limit(calc_limit)
+                if calc_offset is not None:
+                    data_stmt = data_stmt.offset(calc_offset)
+
+                res = await db_session.execute(data_stmt)
                 for d in res.scalars().all():
                     if not any(existing.id == d.id for existing in doctors):
                         doctors.append(d)
         except Exception:
             continue
 
+    response.headers["X-Total-Count"] = str(total_count)
     return doctors
 
 
@@ -876,10 +1062,15 @@ async def delete_doctor(
 # -----------------------------------------------------------------------------
 @router.get("/patients", response_model=List[PatientOut])
 async def list_patients(
-    search: Optional[str] = None,
-    status_filter: Optional[str] = None,
-    limit: int = 100,
-    offset: int = 0,
+    response: Response,
+    search: Optional[str] = Query(None, description="Search by patient name, phone, or email"),
+    status_filter: Optional[str] = Query(None, description="ACTIVE, INACTIVE, ALL"),
+    sort_by: Optional[str] = Query(None, description="Column to sort by"),
+    sort_dir: Optional[str] = Query("asc", description="asc or desc"),
+    page: Optional[int] = Query(None, ge=1),
+    page_size: Optional[int] = Query(None, ge=1),
+    limit: Optional[int] = None,
+    offset: Optional[int] = None,
     current_user: AdminUser = Depends(require_permission("patients", "view")),
     db_session: AsyncSession = Depends(get_db)
 ):
@@ -887,34 +1078,89 @@ async def list_patients(
     if not tenant_schema or tenant_schema == "public":
         tenant_schema = "clinic_default"
 
+    safe_schema = sanitize_schema_name(tenant_schema)
+
     if is_postgres():
-        await db_session.execute(text(f'SET search_path TO "{tenant_schema}", public;'))
+        await db_session.execute(text(f'SET search_path TO "{safe_schema}", public;'))
+
+    conditions = []
+    if search:
+        s = f"%{search}%"
+        conditions.append(or_(Patient.full_name.ilike(s), Patient.mobile_number.ilike(s), Patient.email.ilike(s)))
+    if status_filter and status_filter != 'ALL':
+        conditions.append(Patient.status == status_filter.upper())
+
+    # Sorting
+    is_asc = (sort_dir or "").lower() == "asc"
+    if sort_by == "mobile_number":
+        order_clause = asc(Patient.mobile_number) if is_asc else desc(Patient.mobile_number)
+    elif sort_by == "status":
+        order_clause = asc(Patient.status) if is_asc else desc(Patient.status)
+    elif sort_by == "created_at":
+        order_clause = asc(Patient.created_at) if is_asc else desc(Patient.created_at)
+    else:
+        order_clause = asc(Patient.full_name) if is_asc else desc(Patient.full_name)
+
+    # Pagination calculation
+    calc_limit: Optional[int] = None
+    calc_offset: Optional[int] = None
+    if page is not None and page_size is not None:
+        calc_limit = page_size
+        calc_offset = (page - 1) * page_size
+    elif limit is not None:
+        calc_limit = limit
+        calc_offset = offset or 0
 
     try:
+        # Count total
+        count_stmt = select(func.count(Patient.id))
+        if conditions:
+            count_stmt = count_stmt.where(and_(*conditions))
+        c_res = await db_session.execute(count_stmt)
+        total_count = c_res.scalar_one_or_none() or 0
+        response.headers["X-Total-Count"] = str(total_count)
+
         stmt = select(Patient)
-        if search:
-            stmt = stmt.where(Patient.full_name.ilike(f"%{search}%") | Patient.mobile_number.ilike(f"%{search}%"))
-        if status_filter:
-            stmt = stmt.where(Patient.status == status_filter.upper())
-        stmt = stmt.limit(limit).offset(offset)
+        if conditions:
+            stmt = stmt.where(and_(*conditions))
+        stmt = stmt.order_by(order_clause)
+        if calc_limit is not None:
+            stmt = stmt.limit(calc_limit)
+        if calc_offset is not None:
+            stmt = stmt.offset(calc_offset)
+
         result = await db_session.execute(stmt)
         return result.scalars().all()
     except Exception as e:
-        logger.warning(f"Error reading patients in schema '{tenant_schema}': {e}. Falling back to clinic_default.")
+        logger.warning(f"Error reading patients in schema '{safe_schema}': {e}. Falling back to public.")
         if is_postgres():
             try:
                 await db_session.rollback()
-                await db_session.execute(text('SET search_path TO "clinic_default", public;'))
+                await db_session.execute(text('SET search_path TO public;'))
+
+                count_stmt = select(func.count(Patient.id))
+                if conditions:
+                    count_stmt = count_stmt.where(and_(*conditions))
+                c_res = await db_session.execute(count_stmt)
+                total_count = c_res.scalar_one_or_none() or 0
+                response.headers["X-Total-Count"] = str(total_count)
+
                 stmt = select(Patient)
-                if search:
-                    stmt = stmt.where(Patient.full_name.ilike(f"%{search}%") | Patient.mobile_number.ilike(f"%{search}%"))
-                if status_filter:
-                    stmt = stmt.where(Patient.status == status_filter.upper())
-                res = await db_session.execute(stmt.limit(limit).offset(offset))
+                if conditions:
+                    stmt = stmt.where(and_(*conditions))
+                stmt = stmt.order_by(order_clause)
+                if calc_limit is not None:
+                    stmt = stmt.limit(calc_limit)
+                if calc_offset is not None:
+                    stmt = stmt.offset(calc_offset)
+
+                res = await db_session.execute(stmt)
                 return res.scalars().all()
             except Exception as e2:
                 logger.error(f"Fallback patient query failed: {e2}")
+                response.headers["X-Total-Count"] = "0"
                 return []
+        response.headers["X-Total-Count"] = "0"
         return []
 
 
@@ -956,8 +1202,14 @@ async def create_patient(
         is_active=payload.is_active
     )
     db_session.add(patient)
+    await db_session.flush()
     await db_session.commit()
-    await db_session.refresh(patient)
+    if is_postgres():
+        await db_session.execute(text(f'SET search_path TO "{tenant_schema}", public;'))
+    try:
+        await db_session.refresh(patient)
+    except Exception:
+        pass
     return patient
 
 
@@ -994,8 +1246,14 @@ async def update_patient(
     if payload.is_active is not None:
         patient.is_active = payload.is_active
 
+    await db_session.flush()
     await db_session.commit()
-    await db_session.refresh(patient)
+    if is_postgres():
+        await db_session.execute(text(f'SET search_path TO "{tenant_schema}", public;'))
+    try:
+        await db_session.refresh(patient)
+    except Exception:
+        pass
     return patient
 
 
@@ -1017,8 +1275,14 @@ async def toggle_patient_status(
 
     patient.is_active = payload.is_active
     patient.status = "ACTIVE" if payload.is_active else "INACTIVE"
+    await db_session.flush()
     await db_session.commit()
-    await db_session.refresh(patient)
+    if is_postgres():
+        await db_session.execute(text(f'SET search_path TO "{tenant_schema}", public;'))
+    try:
+        await db_session.refresh(patient)
+    except Exception:
+        pass
     return patient
 
 
@@ -1105,8 +1369,14 @@ async def update_whatsapp_config(
     if payload.bot_config is not None:
         clinic.bot_config = payload.bot_config
 
+    await db_session.flush()
     await db_session.commit()
-    await db_session.refresh(clinic)
+    if is_postgres():
+        await db_session.execute(text(f'SET search_path TO "{tenant_schema}", public;'))
+    try:
+        await db_session.refresh(clinic)
+    except Exception:
+        pass
 
     return WhatsAppConfigOut(
         clinic_id=clinic.id,
@@ -1144,8 +1414,15 @@ async def test_whatsapp_connection(
 # -----------------------------------------------------------------------------
 @router.get("/specializations", response_model=List[SpecializationOut])
 async def list_specializations(
-    search: Optional[str] = None,
-    is_active: Optional[bool] = None,
+    response: Response,
+    search: Optional[str] = Query(None, description="Search by specialization name or description"),
+    is_active: Optional[bool] = Query(None, description="Filter active status"),
+    sort_by: Optional[str] = Query(None, description="Column to sort by"),
+    sort_dir: Optional[str] = Query("asc", description="asc or desc"),
+    page: Optional[int] = Query(None, ge=1),
+    page_size: Optional[int] = Query(None, ge=1),
+    limit: Optional[int] = None,
+    offset: Optional[int] = None,
     db_session: AsyncSession = Depends(get_db),
     current_user: Optional[AdminUser] = Depends(get_optional_admin)
 ):
@@ -1153,11 +1430,39 @@ async def list_specializations(
         await db_session.execute(text('SET search_path TO public;'))
 
     stmt = select(Specialization)
+    conditions = []
     if search:
-        stmt = stmt.where(Specialization.name.ilike(f"%{search}%"))
+        s = f"%{search}%"
+        conditions.append(or_(Specialization.name.ilike(s), Specialization.description.ilike(s)))
     if is_active is not None:
-        stmt = stmt.where(Specialization.is_active == is_active)
-    stmt = stmt.order_by(Specialization.name.asc())
+        conditions.append(Specialization.is_active == is_active)
+
+    if conditions:
+        stmt = stmt.where(and_(*conditions))
+
+    # Count total
+    count_stmt = select(func.count(Specialization.id))
+    if conditions:
+        count_stmt = count_stmt.where(and_(*conditions))
+    c_res = await db_session.execute(count_stmt)
+    total_count = c_res.scalar_one_or_none() or 0
+    response.headers["X-Total-Count"] = str(total_count)
+
+    # Sorting
+    is_asc = (sort_dir or "").lower() == "asc"
+    if sort_by == "is_active":
+        stmt = stmt.order_by(asc(Specialization.is_active) if is_asc else desc(Specialization.is_active))
+    elif sort_by == "created_at":
+        stmt = stmt.order_by(asc(Specialization.created_at) if is_asc else desc(Specialization.created_at))
+    else:
+        stmt = stmt.order_by(asc(Specialization.name) if is_asc else desc(Specialization.name))
+
+    # Pagination
+    if page is not None and page_size is not None:
+        stmt = stmt.limit(page_size).offset((page - 1) * page_size)
+    elif limit is not None:
+        stmt = stmt.limit(limit).offset(offset or 0)
+
     result = await db_session.execute(stmt)
     return result.scalars().all()
 
@@ -1198,8 +1503,14 @@ async def create_specialization(
         is_active=payload.is_active
     )
     db_session.add(spec)
+    await db_session.flush()
     await db_session.commit()
-    await db_session.refresh(spec)
+    if is_postgres():
+        await db_session.execute(text('SET search_path TO public;'))
+    try:
+        await db_session.refresh(spec)
+    except Exception:
+        pass
     return spec
 
 
@@ -1234,8 +1545,14 @@ async def update_specialization(
     if payload.is_active is not None:
         spec.is_active = payload.is_active
 
+    await db_session.flush()
     await db_session.commit()
-    await db_session.refresh(spec)
+    if is_postgres():
+        await db_session.execute(text('SET search_path TO public;'))
+    try:
+        await db_session.refresh(spec)
+    except Exception:
+        pass
     return spec
 
 
@@ -1255,8 +1572,14 @@ async def toggle_specialization_status(
         raise HTTPException(status_code=404, detail="Specialization not found")
 
     spec.is_active = payload.is_active
+    await db_session.flush()
     await db_session.commit()
-    await db_session.refresh(spec)
+    if is_postgres():
+        await db_session.execute(text('SET search_path TO public;'))
+    try:
+        await db_session.refresh(spec)
+    except Exception:
+        pass
     return spec
 
 

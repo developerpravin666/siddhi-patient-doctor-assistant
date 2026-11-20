@@ -28,13 +28,13 @@ export type NavTab =
 interface SidebarProps {
   currentTab?: NavTab;
   onSelectTab?: (tab: NavTab) => void;
-  pendingRemindersCount: number;
+  pendingRemindersCount?: number;
   currentUser?: AdminUser | null;
   userRole?: UserRole;
 }
 
 export const Sidebar: React.FC<SidebarProps> = ({ 
-  pendingRemindersCount,
+  pendingRemindersCount = 0,
   currentUser,
   userRole = 'RECEPTIONIST'
 }) => {

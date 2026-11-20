@@ -1,5 +1,5 @@
-import React from 'react';
-import { useNavigate, useOutletContext } from 'react-router-dom';
+import React, { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { 
   Calendar, 
   CheckCircle2, 
@@ -9,9 +9,12 @@ import {
   Sparkles, 
   ShieldCheck,
   ChevronRight,
-  MessageSquare
+  MessageSquare,
+  RefreshCw,
+  AlertCircle
 } from 'lucide-react';
-import { DashboardStats, Appointment, AppContextType } from '../types';
+import { DashboardStats, Appointment } from '../types';
+import { getDashboardStats, getAppointments } from '../api/client';
 
 interface DashboardProps {
   stats?: DashboardStats;
@@ -22,9 +25,8 @@ interface DashboardProps {
 
 export const Dashboard: React.FC<DashboardProps> = (props) => {
   const navigate = useNavigate();
-  const outlet = useOutletContext<AppContextType>();
 
-  const stats = props.stats || outlet?.stats || {
+  const [stats, setStats] = useState<DashboardStats>(props.stats || {
     total_appointments: 0,
     today_appointments: 0,
     confirmed_appointments: 0,
@@ -32,8 +34,35 @@ export const Dashboard: React.FC<DashboardProps> = (props) => {
     total_patients: 0,
     total_doctors: 0,
     pending_reminders: 0
+  });
+  const [recentAppointments, setRecentAppointments] = useState<Appointment[]>(props.recentAppointments || []);
+  const [loading, setLoading] = useState<boolean>(!props.stats);
+  const [error, setError] = useState<string | null>(null);
+
+  const fetchDashboardData = async () => {
+    try {
+      setLoading(true);
+      setError(null);
+      const [statsData, apptsData] = await Promise.all([
+        getDashboardStats(),
+        getAppointments()
+      ]);
+      setStats(statsData);
+      setRecentAppointments(apptsData);
+    } catch (err: any) {
+      console.error('Failed to load dashboard data:', err);
+      setError(err.response?.data?.detail || 'Failed to load dashboard data. Please try again.');
+    } finally {
+      setLoading(false);
+    }
   };
-  const recentAppointments = props.recentAppointments || outlet?.appointments || [];
+
+  useEffect(() => {
+    if (!props.stats) {
+      fetchDashboardData();
+    }
+  }, [props.stats]);
+
   const handleNavigate = (path: string) => {
     if (props.onNavigate) {
       props.onNavigate(path);
@@ -41,7 +70,14 @@ export const Dashboard: React.FC<DashboardProps> = (props) => {
       navigate(path.startsWith('/') ? path : `/${path}`);
     }
   };
-  const handleRefresh = props.onRefresh || outlet?.loadData;
+
+  const handleRefresh = () => {
+    if (props.onRefresh) {
+      props.onRefresh();
+    } else {
+      fetchDashboardData();
+    }
+  };
   return (
     <div className="space-y-6">
       {/* Top Banner */}
@@ -65,12 +101,27 @@ export const Dashboard: React.FC<DashboardProps> = (props) => {
           </button>
           <button
             onClick={handleRefresh}
-            className="px-3.5 py-2.5 rounded-xl bg-brand-800/60 text-white font-medium text-sm hover:bg-brand-800 transition"
+            disabled={loading}
+            className="px-3.5 py-2.5 rounded-xl bg-brand-800/60 text-white font-medium text-sm hover:bg-brand-800 transition flex items-center gap-1.5 disabled:opacity-50"
           >
+            <RefreshCw className={`w-3.5 h-3.5 ${loading ? 'animate-spin' : ''}`} />
             Refresh
           </button>
         </div>
       </div>
+
+      {/* Error Alert */}
+      {error && (
+        <div className="p-4 rounded-xl bg-rose-50 border border-rose-200 text-rose-800 text-sm flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <AlertCircle className="w-4 h-4 text-rose-600 shrink-0" />
+            <span>{error}</span>
+          </div>
+          <button onClick={fetchDashboardData} className="text-xs font-bold underline hover:text-rose-900">
+            Retry
+          </button>
+        </div>
+      )}
 
       {/* KPI Cards */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">

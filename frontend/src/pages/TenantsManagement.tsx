@@ -1,32 +1,89 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Building2, Plus, CheckCircle2, XCircle, Database, Stethoscope, Edit3 } from 'lucide-react';
+import { Building2, Plus, CheckCircle2, XCircle, Stethoscope, Edit3, Database } from 'lucide-react';
 import { getTenants, updateTenant } from '../api/client';
 import { Tenant } from '../types';
 import { DataTable, ColumnDef } from '../components/DataTable';
 import { useConfirm } from '../context/ConfirmationContext';
 
-export const TenantsManagement: React.FC = () => {
+export const TenantsManagement: React.FC<{ defaultMode?: 'server' | 'client' }> = (props) => {
   const navigate = useNavigate();
+  const [gridMode] = useState<'server' | 'client'>(props.defaultMode || 'server');
+
+  const [page, setPage] = useState<number>(1);
+  const [pageSize, setPageSize] = useState<number>(10);
+  const [sortKey, setSortKey] = useState<string | null>('created_at');
+  const [sortDir, setSortDir] = useState<'asc' | 'desc'>('desc');
+  const [searchTerm, setSearchTerm] = useState<string>('');
+  const [totalCount, setTotalCount] = useState<number>(0);
+
   const [tenants, setTenants] = useState<Tenant[]>([]);
   const [loading, setLoading] = useState(true);
   const confirm = useConfirm();
 
-  const loadTenants = async () => {
+  const loadTenants = useCallback(async (overrides?: {
+    search?: string;
+    sortKey?: string | null;
+    sortDir?: 'asc' | 'desc';
+    page?: number;
+    pageSize?: number;
+    mode?: 'server' | 'client';
+  }) => {
     try {
       setLoading(true);
-      const data = await getTenants();
+      const effMode = overrides?.mode || gridMode;
+      const effSearch = overrides?.search !== undefined ? overrides.search : searchTerm;
+      const effSortKey = overrides?.sortKey !== undefined ? overrides.sortKey : sortKey;
+      const effSortDir = overrides?.sortDir !== undefined ? overrides.sortDir : sortDir;
+      const effPage = overrides?.page !== undefined ? overrides.page : page;
+      const effPageSize = overrides?.pageSize !== undefined ? overrides.pageSize : pageSize;
+
+      const params: any = {};
+      if (effMode === 'server') {
+        if (effSearch) params.search = effSearch;
+        if (effSortKey) params.sort_by = effSortKey;
+        if (effSortDir) params.sort_dir = effSortDir;
+        params.page = effPage;
+        params.page_size = effPageSize;
+      }
+
+      const data = await getTenants(params);
       setTenants(data);
+      setTotalCount((data as any).total ?? data.length);
     } catch (err) {
       console.error(err);
     } finally {
       setLoading(false);
     }
-  };
+  }, [gridMode, searchTerm, sortKey, sortDir, page, pageSize]);
 
   useEffect(() => {
     loadTenants();
-  }, []);
+  }, [gridMode]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const handleDataTableParamsChange = (params: {
+    page: number;
+    pageSize: number;
+    sortKey: string | null;
+    sortDir: 'asc' | 'desc';
+    search: string;
+  }) => {
+    setPage(params.page);
+    setPageSize(params.pageSize);
+    setSortKey(params.sortKey);
+    setSortDir(params.sortDir);
+    setSearchTerm(params.search);
+
+    if (gridMode === 'server') {
+      loadTenants({
+        page: params.page,
+        pageSize: params.pageSize,
+        sortKey: params.sortKey,
+        sortDir: params.sortDir,
+        search: params.search,
+      });
+    }
+  };
 
   const handleToggleStatus = async (tenant: Tenant) => {
     const nextStatus = tenant.status === 'ACTIVE' ? 'SUSPENDED' : 'ACTIVE';
@@ -180,6 +237,14 @@ export const TenantsManagement: React.FC = () => {
         keyExtractor={(t) => t.id}
         loading={loading}
         searchPlaceholder="Search by clinic name, doctor, or schema..."
+        mode={gridMode}
+        totalCount={totalCount}
+        page={page}
+        pageSize={pageSize}
+        sortKey={sortKey}
+        sortDir={sortDir}
+        searchTerm={searchTerm}
+        onParamsChange={handleDataTableParamsChange}
         actionButton={
           <button
             onClick={() => navigate('/tenants/new')}

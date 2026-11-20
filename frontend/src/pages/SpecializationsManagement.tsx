@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { 
   Plus, 
   Stethoscope, 
@@ -30,7 +30,16 @@ const specializationSchema = z.object({
 
 type SpecializationFormData = z.infer<typeof specializationSchema>;
 
-export const SpecializationsManagement: React.FC = () => {
+export const SpecializationsManagement: React.FC<{ defaultMode?: 'server' | 'client' }> = (props) => {
+  const [gridMode] = useState<'server' | 'client'>(props.defaultMode || 'server');
+
+  const [page, setPage] = useState<number>(1);
+  const [pageSize, setPageSize] = useState<number>(10);
+  const [sortKey, setSortKey] = useState<string | null>('name');
+  const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc');
+  const [searchTerm, setSearchTerm] = useState<string>('');
+  const [totalCount, setTotalCount] = useState<number>(0);
+
   const [specializations, setSpecializations] = useState<Specialization[]>([]);
   const [loading, setLoading] = useState(true);
   const [errorMessage, setErrorMessage] = useState('');
@@ -47,22 +56,71 @@ export const SpecializationsManagement: React.FC = () => {
   const [saving, setSaving] = useState(false);
   const confirm = useConfirm();
 
-  const loadData = async () => {
+  const loadData = useCallback(async (overrides?: {
+    search?: string;
+    sortKey?: string | null;
+    sortDir?: 'asc' | 'desc';
+    page?: number;
+    pageSize?: number;
+    mode?: 'server' | 'client';
+  }) => {
     try {
       setLoading(true);
       setErrorMessage('');
-      const data = await getSpecializations();
+
+      const effMode = overrides?.mode || gridMode;
+      const effSearch = overrides?.search !== undefined ? overrides.search : searchTerm;
+      const effSortKey = overrides?.sortKey !== undefined ? overrides.sortKey : sortKey;
+      const effSortDir = overrides?.sortDir !== undefined ? overrides.sortDir : sortDir;
+      const effPage = overrides?.page !== undefined ? overrides.page : page;
+      const effPageSize = overrides?.pageSize !== undefined ? overrides.pageSize : pageSize;
+
+      const params: any = {};
+      if (effMode === 'server') {
+        if (effSearch) params.search = effSearch;
+        if (effSortKey) params.sort_by = effSortKey;
+        if (effSortDir) params.sort_dir = effSortDir;
+        params.page = effPage;
+        params.page_size = effPageSize;
+      }
+
+      const data = await getSpecializations(params);
       setSpecializations(data);
+      setTotalCount((data as any).total ?? data.length);
     } catch (err: any) {
       setErrorMessage(err.response?.data?.detail || 'Failed to load specializations');
     } finally {
       setLoading(false);
     }
-  };
+  }, [gridMode, searchTerm, sortKey, sortDir, page, pageSize]);
 
   useEffect(() => {
     loadData();
-  }, []);
+  }, [gridMode]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const handleDataTableParamsChange = (params: {
+    page: number;
+    pageSize: number;
+    sortKey: string | null;
+    sortDir: 'asc' | 'desc';
+    search: string;
+  }) => {
+    setPage(params.page);
+    setPageSize(params.pageSize);
+    setSortKey(params.sortKey);
+    setSortDir(params.sortDir);
+    setSearchTerm(params.search);
+
+    if (gridMode === 'server') {
+      loadData({
+        page: params.page,
+        pageSize: params.pageSize,
+        sortKey: params.sortKey,
+        sortDir: params.sortDir,
+        search: params.search,
+      });
+    }
+  };
 
   const openNewForm = () => {
     setEditItem('new');
@@ -406,6 +464,14 @@ export const SpecializationsManagement: React.FC = () => {
         loading={loading}
         searchPlaceholder="Search specializations..."
         emptyMessage="No specializations found in catalog."
+        mode={gridMode}
+        totalCount={totalCount}
+        page={page}
+        pageSize={pageSize}
+        sortKey={sortKey}
+        sortDir={sortDir}
+        searchTerm={searchTerm}
+        onParamsChange={handleDataTableParamsChange}
         defaultPageSize={10}
         initialSortKey="name"
       />

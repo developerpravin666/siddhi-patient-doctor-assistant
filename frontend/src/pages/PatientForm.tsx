@@ -13,6 +13,7 @@ import {
 import { z } from 'zod';
 import { getPatient, createPatient, updatePatient } from '../api/client';
 import { Patient } from '../types';
+import { SearchableSelect } from '../components/SearchableSelect';
 
 const patientSchema = z.object({
   full_name: z.string().trim().min(2, 'Full Name must be at least 2 characters').max(100, 'Full Name cannot exceed 100 characters'),
@@ -260,16 +261,18 @@ export const PatientForm: React.FC = () => {
                 <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5">
                   Gender
                 </label>
-                <select
-                  value={formData.gender}
-                  onChange={(e) => setFormData({ ...formData, gender: e.target.value as any })}
-                  className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 bg-white"
-                >
-                  <option value="">Select</option>
-                  <option value="MALE">Male</option>
-                  <option value="FEMALE">Female</option>
-                  <option value="OTHER">Other</option>
-                </select>
+                <SearchableSelect
+                  placeholder="Select Gender"
+                  value={formData.gender || ''}
+                  onChange={(val) => setFormData({ ...formData, gender: (val || '') as any })}
+                  searchable={false}
+                  options={[
+                    { value: '', label: 'Select' },
+                    { value: 'MALE', label: 'Male' },
+                    { value: 'FEMALE', label: 'Female' },
+                    { value: 'OTHER', label: 'Other' },
+                  ]}
+                />
               </div>
 
               <div>

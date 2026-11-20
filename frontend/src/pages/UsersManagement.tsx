@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { 
   Plus, 
   Shield, 
@@ -6,8 +6,8 @@ import {
   ClipboardList, 
   CheckCircle, 
   XCircle, 
-  Edit3,
-  Trash2,
+  Edit3, 
+  Trash2, 
   Lock
 } from 'lucide-react';
 import { useOutletContext, useNavigate } from 'react-router-dom';
@@ -19,6 +19,7 @@ import { useConfirm } from '../context/ConfirmationContext';
 interface UsersManagementProps {
   currentUser?: AdminUser | null;
   currentUserRole?: UserRole;
+  defaultMode?: 'server' | 'client';
 }
 
 const SCREEN_METADATA = [
@@ -35,6 +36,15 @@ export const UsersManagement: React.FC<UsersManagementProps> = (props) => {
   const currentUser = props.currentUser !== undefined ? props.currentUser : outlet?.currentUser;
   const currentUserRole = props.currentUserRole || outlet?.userRole || 'CLINIC_ADMIN';
 
+  const [gridMode] = useState<'server' | 'client'>(props.defaultMode || 'server');
+
+  const [page, setPage] = useState<number>(1);
+  const [pageSize, setPageSize] = useState<number>(10);
+  const [sortKey, setSortKey] = useState<string | null>('full_name');
+  const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc');
+  const [searchTerm, setSearchTerm] = useState<string>('');
+  const [totalCount, setTotalCount] = useState<number>(0);
+
   const [users, setUsers] = useState<AdminUser[]>([]);
   const [loading, setLoading] = useState(true);
   const [toastMessage, setToastMessage] = useState<{ text: string; type: 'success' | 'error' } | null>(null);
@@ -45,21 +55,69 @@ export const UsersManagement: React.FC<UsersManagementProps> = (props) => {
     setTimeout(() => setToastMessage(null), 4000);
   };
 
-  const loadUsers = async () => {
+  const loadUsers = useCallback(async (overrides?: {
+    search?: string;
+    sortKey?: string | null;
+    sortDir?: 'asc' | 'desc';
+    page?: number;
+    pageSize?: number;
+    mode?: 'server' | 'client';
+  }) => {
     try {
       setLoading(true);
-      const data = await getUsers();
+      const effMode = overrides?.mode || gridMode;
+      const effSearch = overrides?.search !== undefined ? overrides.search : searchTerm;
+      const effSortKey = overrides?.sortKey !== undefined ? overrides.sortKey : sortKey;
+      const effSortDir = overrides?.sortDir !== undefined ? overrides.sortDir : sortDir;
+      const effPage = overrides?.page !== undefined ? overrides.page : page;
+      const effPageSize = overrides?.pageSize !== undefined ? overrides.pageSize : pageSize;
+
+      const params: any = {};
+      if (effMode === 'server') {
+        if (effSearch) params.search = effSearch;
+        if (effSortKey) params.sort_by = effSortKey;
+        if (effSortDir) params.sort_dir = effSortDir;
+        params.page = effPage;
+        params.page_size = effPageSize;
+      }
+
+      const data = await getUsers(params);
       setUsers(data);
+      setTotalCount((data as any).total ?? data.length);
     } catch (err: any) {
       showToast(err.response?.data?.detail || 'Failed to load staff accounts', 'error');
     } finally {
       setLoading(false);
     }
-  };
+  }, [gridMode, searchTerm, sortKey, sortDir, page, pageSize]);
 
   useEffect(() => {
     loadUsers();
-  }, []);
+  }, [gridMode]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const handleDataTableParamsChange = (params: {
+    page: number;
+    pageSize: number;
+    sortKey: string | null;
+    sortDir: 'asc' | 'desc';
+    search: string;
+  }) => {
+    setPage(params.page);
+    setPageSize(params.pageSize);
+    setSortKey(params.sortKey);
+    setSortDir(params.sortDir);
+    setSearchTerm(params.search);
+
+    if (gridMode === 'server') {
+      loadUsers({
+        page: params.page,
+        pageSize: params.pageSize,
+        sortKey: params.sortKey,
+        sortDir: params.sortDir,
+        search: params.search,
+      });
+    }
+  };
 
   const handleToggleActive = async (user: AdminUser) => {
     try {
@@ -293,8 +351,17 @@ export const UsersManagement: React.FC<UsersManagementProps> = (props) => {
         }
         data={users}
         columns={columns}
+        keyExtractor={(u) => u.id}
         loading={loading}
         searchPlaceholder="Search staff by name or username..."
+        mode={gridMode}
+        totalCount={totalCount}
+        page={page}
+        pageSize={pageSize}
+        sortKey={sortKey}
+        sortDir={sortDir}
+        searchTerm={searchTerm}
+        onParamsChange={handleDataTableParamsChange}
         emptyMessage="No staff accounts found."
         defaultPageSize={10}
         initialSortKey="full_name"

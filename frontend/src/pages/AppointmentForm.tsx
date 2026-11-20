@@ -22,6 +22,7 @@ import {
   getPatients
 } from '../api/client';
 import { Doctor, Patient } from '../types';
+import { SearchableSelect } from '../components/SearchableSelect';
 
 const appointmentSchema = z.object({
   patient_name: z.string().trim().min(2, 'Patient name must be at least 2 characters').max(120, 'Name cannot exceed 120 characters'),
@@ -269,21 +270,23 @@ export const AppointmentForm: React.FC = () => {
             {/* Quick Existing Patient Picker */}
             {patients.length > 0 && !isEditMode && (
               <div className="flex items-center gap-2">
-                <span className="text-xs text-slate-500 font-medium">Or pick existing:</span>
-                <select
-                  onChange={(e) => {
-                    if (e.target.value) handleSelectExistingPatient(e.target.value);
-                  }}
-                  defaultValue=""
-                  className="text-xs px-3 py-1.5 border border-slate-300 rounded-lg bg-slate-50 text-slate-700 focus:outline-none focus:ring-2 focus:ring-indigo-500"
-                >
-                  <option value="">-- Choose Existing Patient --</option>
-                  {patients.map((p) => (
-                    <option key={p.id} value={p.id}>
-                      {p.full_name} ({p.mobile_number})
-                    </option>
-                  ))}
-                </select>
+                <span className="text-xs text-slate-500 font-medium shrink-0">Or pick existing:</span>
+                <div className="w-64">
+                  <SearchableSelect
+                    size="sm"
+                    placeholder="-- Choose Patient --"
+                    searchPlaceholder="Search name or mobile..."
+                    value=""
+                    onChange={(val) => {
+                      if (val) handleSelectExistingPatient(val);
+                    }}
+                    options={patients.map((p) => ({
+                      value: p.id,
+                      label: p.full_name,
+                      subLabel: p.mobile_number,
+                    }))}
+                  />
+                </div>
               </div>
             )}
           </div>
@@ -348,23 +351,18 @@ export const AppointmentForm: React.FC = () => {
               <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5">
                 Consulting Doctor <span className="text-rose-500">*</span>
               </label>
-              <select
+              <SearchableSelect
+                placeholder="-- Choose Doctor --"
+                searchPlaceholder="Search doctor or specialty..."
                 value={formData.doctor_id}
-                onChange={(e) => setFormData({ ...formData, doctor_id: e.target.value, time_slot: '' })}
-                className={`w-full px-3.5 py-2.5 rounded-xl border ${
-                  formErrors.doctor_id ? 'border-rose-400 bg-rose-50' : 'border-slate-300'
-                } text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 bg-white`}
-              >
-                <option value="">-- Choose Doctor --</option>
-                {doctors.map((doc) => (
-                  <option key={doc.id} value={doc.id}>
-                    {doc.name} — {doc.specialty} ({doc.slot_duration_minutes || 15} min interval)
-                  </option>
-                ))}
-              </select>
-              {formErrors.doctor_id && (
-                <p className="text-xs text-rose-600 mt-1 font-medium">{formErrors.doctor_id}</p>
-              )}
+                error={formErrors.doctor_id}
+                onChange={(val) => setFormData({ ...formData, doctor_id: val, time_slot: '' })}
+                options={doctors.map((doc) => ({
+                  value: doc.id,
+                  label: doc.name,
+                  subLabel: `${doc.specialty} (${doc.slot_duration_minutes || 15} min interval)`,
+                }))}
+              />
               {selectedDoctor && (
                 <div className="mt-2 p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-600 flex items-center justify-between">
                   <span>
@@ -534,16 +532,17 @@ export const AppointmentForm: React.FC = () => {
                 <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5">
                   Appointment Status
                 </label>
-                <select
+                <SearchableSelect
                   value={formData.status}
-                  onChange={(e) => setFormData({ ...formData, status: e.target.value as any })}
-                  className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 bg-white"
-                >
-                  <option value="CONFIRMED">CONFIRMED (Scheduled)</option>
-                  <option value="COMPLETED">COMPLETED (Consultation Done)</option>
-                  <option value="RESCHEDULED">RESCHEDULED</option>
-                  <option value="CANCELLED">CANCELLED</option>
-                </select>
+                  onChange={(val) => setFormData({ ...formData, status: val as any })}
+                  searchable={false}
+                  options={[
+                    { value: 'CONFIRMED', label: 'CONFIRMED (Scheduled)' },
+                    { value: 'COMPLETED', label: 'COMPLETED (Consultation Done)' },
+                    { value: 'RESCHEDULED', label: 'RESCHEDULED' },
+                    { value: 'CANCELLED', label: 'CANCELLED' },
+                  ]}
+                />
               </div>
             )}
 

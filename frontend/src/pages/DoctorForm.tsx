@@ -22,6 +22,7 @@ import {
   getClinics
 } from '../api/client';
 import { Specialization } from '../types';
+import { SearchableSelect } from '../components/SearchableSelect';
 
 const doctorSchema = z.object({
   name: z.string().trim().min(2, 'Doctor name must be at least 2 characters').max(100, 'Name cannot exceed 100 characters'),
@@ -439,20 +440,18 @@ export const DoctorForm: React.FC = () => {
               <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5">
                 Consultation Interval / Patient Gap
               </label>
-              <select
+              <SearchableSelect
                 value={formData.slot_duration_minutes}
-                onChange={(e) => {
-                  const val = parseInt(e.target.value, 10);
-                  handleRegenerateSlots(val);
+                onChange={(val) => {
+                  const numVal = parseInt(val, 10);
+                  handleRegenerateSlots(numVal);
                 }}
-                className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 bg-white"
-              >
-                {INTERVAL_OPTIONS.map((opt) => (
-                  <option key={opt.value} value={opt.value}>
-                    {opt.label}
-                  </option>
-                ))}
-              </select>
+                searchable={false}
+                options={INTERVAL_OPTIONS.map((opt) => ({
+                  value: opt.value,
+                  label: opt.label,
+                }))}
+              />
               <p className="text-[11px] text-slate-400 mt-1 flex items-center gap-1">
                 <Info className="w-3 h-3 text-slate-400" />
                 Changing the interval automatically generates standard morning and evening slots below.

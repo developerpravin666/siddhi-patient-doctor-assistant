@@ -5,7 +5,7 @@ import pytz
 from dateutil import parser
 from sqlalchemy import select, and_, func, text
 from sqlalchemy.ext.asyncio import AsyncSession
-from app.core.database import AsyncSessionLocal, provision_tenant_schema, is_postgres
+from app.core.database import AsyncSessionLocal, provision_tenant_schema, is_postgres, sanitize_schema_name
 from app.core.config import settings
 from app.core.security import get_password_hash
 from app.models.domain import Tenant, Clinic, Doctor, Patient, Appointment, AdminUser, Specialization, get_default_permissions
@@ -172,8 +172,15 @@ class DatabaseService:
                     reminder_sent=False
                 )
                 session.add(new_appointment)
+                await session.flush()
                 await session.commit()
-                await session.refresh(new_appointment)
+                if is_postgres():
+                    safe_schema = sanitize_schema_name(tenant_schema)
+                    await session.execute(text(f'SET search_path TO "{safe_schema}", public;'))
+                try:
+                    await session.refresh(new_appointment)
+                except Exception:
+                    pass
 
                 return {
                     "id": new_appointment.id,

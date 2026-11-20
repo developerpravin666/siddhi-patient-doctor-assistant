@@ -1,7 +1,8 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { useOutletContext } from 'react-router-dom';
 import { MessageSquare, MapPin } from 'lucide-react';
 import { Clinic, AppContextType } from '../types';
+import { getClinics } from '../api/client';
 
 interface SettingsProps {
   clinic?: Clinic;
@@ -9,7 +10,23 @@ interface SettingsProps {
 
 export const SettingsPage: React.FC<SettingsProps> = (props) => {
   const outlet = useOutletContext<AppContextType>();
-  const clinic = props.clinic || outlet?.clinics?.[0];
+  const [clinicData, setClinicData] = useState<Clinic | null>(props.clinic || null);
+
+  useEffect(() => {
+    if (!props.clinic) {
+      getClinics()
+        .then((data) => {
+          if (data && data.length > 0) {
+            setClinicData(data[0]);
+          }
+        })
+        .catch((err) => {
+          console.error('Failed to load clinic settings:', err);
+        });
+    }
+  }, [props.clinic]);
+
+  const clinic = props.clinic || clinicData || outlet?.clinics?.[0];
   return (
     <div className="space-y-6 max-w-4xl">
       <div>

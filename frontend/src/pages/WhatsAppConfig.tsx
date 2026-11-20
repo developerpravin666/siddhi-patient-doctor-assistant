@@ -12,8 +12,9 @@ import {
 } from 'lucide-react';
 import { useOutletContext } from 'react-router-dom';
 import { WhatsAppConfig, Doctor, AdminUser, UserRole, AppContextType } from '../types';
-import { getWhatsAppConfig, updateWhatsAppConfig, testWhatsAppConnection } from '../api/client';
+import { getWhatsAppConfig, updateWhatsAppConfig, testWhatsAppConnection, getDoctors } from '../api/client';
 import { whatsappConfigSchema, validateForm } from '../utils/validation';
+import { SearchableSelect } from '../components/SearchableSelect';
 
 interface WhatsAppConfigProps {
   doctors?: Doctor[];
@@ -24,7 +25,8 @@ interface WhatsAppConfigProps {
 
 export const WhatsAppConfigPage: React.FC<WhatsAppConfigProps> = (props) => {
   const outlet = useOutletContext<AppContextType>();
-  const doctors = props.doctors || outlet?.doctors || [];
+  const [doctorsList, setDoctorsList] = useState<Doctor[]>(props.doctors || []);
+  const doctors = props.doctors || (doctorsList.length > 0 ? doctorsList : outlet?.doctors || []);
   const userRole = props.userRole || outlet?.userRole || 'CLINIC_ADMIN';
 
   const [config, setConfig] = useState<WhatsAppConfig | null>(null);
@@ -63,8 +65,14 @@ export const WhatsAppConfigPage: React.FC<WhatsAppConfigProps> = (props) => {
     const fetchConfig = async () => {
       try {
         setLoading(true);
-        const data = await getWhatsAppConfig();
+        const [data, doctorsData] = await Promise.all([
+          getWhatsAppConfig(),
+          props.doctors ? Promise.resolve(props.doctors) : getDoctors().catch(() => [])
+        ]);
         setConfig(data);
+        if (doctorsData) {
+          setDoctorsList(doctorsData);
+        }
         setPhoneNumberId(data.whatsapp_phone_number_id || '');
         setBusinessAccountId(data.whatsapp_business_account_id || '');
         setAccessToken(data.whatsapp_access_token || '');
@@ -84,7 +92,7 @@ export const WhatsAppConfigPage: React.FC<WhatsAppConfigProps> = (props) => {
       }
     };
     fetchConfig();
-  }, []);
+  }, [props.doctors]);
 
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -336,19 +344,21 @@ export const WhatsAppConfigPage: React.FC<WhatsAppConfigProps> = (props) => {
               {/* Default Doctor Selector */}
               <div className="text-xs">
                 <label className="block font-bold text-slate-700 mb-1">Primary / Default Doctor</label>
-                <select
+                <SearchableSelect
+                  placeholder="-- Automatically Route / First Available Doctor --"
+                  searchPlaceholder="Search doctor by name or specialty..."
                   value={defaultDoctorId}
-                  onChange={(e) => setDefaultDoctorId(e.target.value)}
+                  onChange={(val) => setDefaultDoctorId(val)}
                   disabled={!canEdit}
-                  className="w-full px-3 py-2 rounded-xl border border-slate-200 text-xs bg-white focus:outline-none focus:ring-2 focus:ring-brand-500/20"
-                >
-                  <option value="">-- Automatically Route / First Available Doctor --</option>
-                  {doctors.map((d) => (
-                    <option key={d.id} value={d.id}>
-                      {d.name} ({d.specialty || 'General'})
-                    </option>
-                  ))}
-                </select>
+                  options={[
+                    { value: '', label: '-- Automatically Route / First Available Doctor --' },
+                    ...doctors.map((d) => ({
+                      value: d.id,
+                      label: d.name,
+                      subLabel: d.specialty || 'General',
+                    })),
+                  ]}
+                />
                 <p className="text-[10px] text-slate-400 mt-1">
                   Used if patient does not specify a doctor or clinic operates a single doctor practice.
                 </p>
@@ -372,17 +382,18 @@ export const WhatsAppConfigPage: React.FC<WhatsAppConfigProps> = (props) => {
                   <label className="block font-bold text-slate-700 mb-1 flex items-center gap-1">
                     <Clock className="w-3.5 h-3.5 text-brand-600" /> Automated Reminder Window
                   </label>
-                  <select
+                  <SearchableSelect
                     value={reminderMinutes}
-                    onChange={(e) => setReminderMinutes(parseInt(e.target.value, 10))}
+                    onChange={(val) => setReminderMinutes(parseInt(val, 10))}
                     disabled={!canEdit}
-                    className="w-full px-3 py-2 rounded-xl border border-slate-200 text-xs bg-white focus:outline-none focus:ring-2 focus:ring-brand-500/20"
-                  >
-                    <option value={30}>30 Minutes Before Appointment</option>
-                    <option value={60}>60 Minutes (1 Hour) Before (Recommended)</option>
-                    <option value={120}>2 Hours Before Appointment</option>
-                    <option value={1440}>24 Hours Before Appointment</option>
-                  </select>
+                    searchable={false}
+                    options={[
+                      { value: 30, label: '30 Minutes Before Appointment' },
+                      { value: 60, label: '60 Minutes (1 Hour) Before (Recommended)' },
+                      { value: 120, label: '2 Hours Before Appointment' },
+                      { value: 1440, label: '24 Hours Before Appointment' },
+                    ]}
+                  />
                 </div>
 
                 <div className="flex items-center gap-2 pt-5">

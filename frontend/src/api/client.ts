@@ -74,12 +74,34 @@ export const getDashboardStats = async (): Promise<DashboardStats> => {
   return res.data;
 };
 
+// Helper to wrap paginated response and attach server total from X-Total-Count header
+export interface PaginatedList<T> extends Array<T> {
+  total?: number;
+}
+
+const wrapPaginatedResponse = <T>(res: any): PaginatedList<T> => {
+  const data = res.data;
+  const headerTotal = res.headers?.['x-total-count'] || res.headers?.['X-Total-Count'];
+  const total = headerTotal !== undefined ? parseInt(headerTotal, 10) : (Array.isArray(data) ? data.length : 0);
+  if (Array.isArray(data)) {
+    (data as any).total = isNaN(total) ? data.length : total;
+  }
+  return data;
+};
+
 // -----------------------------------------------------------------------------
 // Tenant Management (SUPER_ADMIN)
 // -----------------------------------------------------------------------------
-export const getTenants = async (): Promise<Tenant[]> => {
-  const res = await api.get('/api/v1/admin/tenants');
-  return res.data;
+export const getTenants = async (params?: {
+  search?: string;
+  status_filter?: string;
+  sort_by?: string;
+  sort_dir?: string;
+  page?: number;
+  page_size?: number;
+}): Promise<PaginatedList<Tenant>> => {
+  const res = await api.get('/api/v1/admin/tenants', { params });
+  return wrapPaginatedResponse<Tenant>(res);
 };
 
 export const getTenant = async (id: string): Promise<Tenant> => {
@@ -118,9 +140,17 @@ export const updateTenant = async (
 // -----------------------------------------------------------------------------
 // User Management (SUPER_ADMIN & CLINIC_ADMIN)
 // -----------------------------------------------------------------------------
-export const getUsers = async (): Promise<AdminUser[]> => {
-  const res = await api.get('/api/v1/admin/users');
-  return res.data;
+export const getUsers = async (params?: {
+  search?: string;
+  role?: string;
+  tenant_id?: string;
+  sort_by?: string;
+  sort_dir?: string;
+  page?: number;
+  page_size?: number;
+}): Promise<PaginatedList<AdminUser>> => {
+  const res = await api.get('/api/v1/admin/users', { params });
+  return wrapPaginatedResponse<AdminUser>(res);
 };
 
 export const getUser = async (id: string): Promise<AdminUser> => {
@@ -155,11 +185,18 @@ export const deleteUser = async (id: string): Promise<void> => {
 // -----------------------------------------------------------------------------
 export const getAppointments = async (params?: {
   date?: string;
+  from_date?: string;
+  to_date?: string;
   status?: string;
   search?: string;
-}): Promise<Appointment[]> => {
+  doctor_id?: string;
+  sort_by?: string;
+  sort_dir?: string;
+  page?: number;
+  page_size?: number;
+}): Promise<PaginatedList<Appointment>> => {
   const res = await api.get('/api/v1/appointments', { params });
-  return res.data;
+  return wrapPaginatedResponse<Appointment>(res);
 };
 
 export const getAppointment = async (id: string): Promise<Appointment> => {
@@ -215,9 +252,18 @@ export const updateAppointmentStatus = async (
 // -----------------------------------------------------------------------------
 // Doctors Management
 // -----------------------------------------------------------------------------
-export const getDoctors = async (): Promise<Doctor[]> => {
-  const res = await api.get('/api/v1/admin/doctors');
-  return res.data;
+export const getDoctors = async (params?: {
+  search?: string;
+  specialty?: string;
+  is_active?: boolean;
+  clinic_id?: string;
+  sort_by?: string;
+  sort_dir?: string;
+  page?: number;
+  page_size?: number;
+}): Promise<PaginatedList<Doctor>> => {
+  const res = await api.get('/api/v1/admin/doctors', { params });
+  return wrapPaginatedResponse<Doctor>(res);
 };
 
 export const getDoctor = async (id: string): Promise<Doctor> => {
@@ -273,9 +319,16 @@ export const updateClinic = async (id: string, data: Partial<Clinic>): Promise<C
 // -----------------------------------------------------------------------------
 // Patients Directory (Full CRUD & Status Toggle)
 // -----------------------------------------------------------------------------
-export const getPatients = async (params?: { search?: string; status_filter?: string }): Promise<Patient[]> => {
+export const getPatients = async (params?: {
+  search?: string;
+  status_filter?: string;
+  sort_by?: string;
+  sort_dir?: string;
+  page?: number;
+  page_size?: number;
+}): Promise<PaginatedList<Patient>> => {
   const res = await api.get('/api/v1/admin/patients', { params });
-  return res.data;
+  return wrapPaginatedResponse<Patient>(res);
 };
 
 export const getPatient = async (id: string): Promise<Patient> => {
@@ -305,9 +358,16 @@ export const deletePatient = async (id: string): Promise<void> => {
 // -----------------------------------------------------------------------------
 // Specializations Master Catalog
 // -----------------------------------------------------------------------------
-export const getSpecializations = async (params?: { search?: string; is_active?: boolean }): Promise<Specialization[]> => {
+export const getSpecializations = async (params?: {
+  search?: string;
+  is_active?: boolean;
+  sort_by?: string;
+  sort_dir?: string;
+  page?: number;
+  page_size?: number;
+}): Promise<PaginatedList<Specialization>> => {
   const res = await api.get('/api/v1/admin/specializations', { params });
-  return res.data;
+  return wrapPaginatedResponse<Specialization>(res);
 };
 
 export const getSpecialization = async (id: string): Promise<Specialization> => {

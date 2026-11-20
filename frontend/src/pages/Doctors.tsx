@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect, useCallback } from 'react';
 import {
   Clock,
   Calendar,
@@ -11,13 +11,15 @@ import {
   Trash2,
   CheckCircle2,
   XCircle,
-  Filter,
-  Layers
+  Layers,
+  RefreshCw,
+  AlertCircle
 } from 'lucide-react';
 import { useOutletContext, useNavigate, Link } from 'react-router-dom';
 import { Doctor, UserRole, AdminUser, AppContextType } from '../types';
-import { deleteDoctor, toggleDoctorStatus } from '../api/client';
+import { getDoctors, deleteDoctor, toggleDoctorStatus } from '../api/client';
 import { DataTable, ColumnDef } from '../components/DataTable';
+import { SearchableSelect } from '../components/SearchableSelect';
 import { useConfirm } from '../context/ConfirmationContext';
 
 interface DoctorsProps {
@@ -25,6 +27,7 @@ interface DoctorsProps {
   currentUser?: AdminUser | null;
   userRole?: UserRole;
   onRefresh?: () => void;
+  defaultMode?: 'server' | 'client';
 }
 
 export const parseSlots = (slots?: string | null): string[] => {
@@ -38,14 +41,108 @@ export const parseSlots = (slots?: string | null): string[] => {
 export const Doctors: React.FC<DoctorsProps> = (props) => {
   const navigate = useNavigate();
   const outlet = useOutletContext<AppContextType>();
-  const doctors = props.doctors || outlet?.doctors || [];
-  const onRefresh = props.onRefresh || outlet?.loadData || (() => {});
+
+  // Mode: server (default) or client
+  const [gridMode] = useState<'server' | 'client'>(props.defaultMode || 'server');
+
+  const [page, setPage] = useState<number>(1);
+  const [pageSize, setPageSize] = useState<number>(10);
+  const [sortKey, setSortKey] = useState<string | null>('name');
+  const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc');
+  const [searchTerm, setSearchTerm] = useState<string>('');
+  const [totalCount, setTotalCount] = useState<number>(0);
+
+  const [doctorsList, setDoctorsList] = useState<Doctor[]>(props.doctors || []);
+  const [loading, setLoading] = useState<boolean>(!props.doctors);
+  const [error, setError] = useState<string | null>(null);
+
+  const doctors = props.doctors || doctorsList;
   const currentUser = props.currentUser !== undefined ? props.currentUser : outlet?.currentUser;
   const userRole = props.userRole || outlet?.userRole || 'RECEPTIONIST';
 
   const [specialtyFilter, setSpecialtyFilter] = useState('ALL');
   const [toastMessage, setToastMessage] = useState<{ text: string; type: 'success' | 'error' } | null>(null);
   const confirm = useConfirm();
+
+  const fetchDoctors = useCallback(async (overrides?: {
+    specialty?: string;
+    search?: string;
+    sortKey?: string | null;
+    sortDir?: 'asc' | 'desc';
+    page?: number;
+    pageSize?: number;
+    mode?: 'server' | 'client';
+  }) => {
+    try {
+      setLoading(true);
+      setError(null);
+      const effMode = overrides?.mode || gridMode;
+      const effSpec = overrides?.specialty !== undefined ? overrides.specialty : specialtyFilter;
+      const effSearch = overrides?.search !== undefined ? overrides.search : searchTerm;
+      const effSortKey = overrides?.sortKey !== undefined ? overrides.sortKey : sortKey;
+      const effSortDir = overrides?.sortDir !== undefined ? overrides.sortDir : sortDir;
+      const effPage = overrides?.page !== undefined ? overrides.page : page;
+      const effPageSize = overrides?.pageSize !== undefined ? overrides.pageSize : pageSize;
+
+      const params: any = {};
+      if (effSpec && effSpec !== 'ALL') params.specialty = effSpec;
+
+      if (effMode === 'server') {
+        if (effSearch) params.search = effSearch;
+        if (effSortKey) params.sort_by = effSortKey;
+        if (effSortDir) params.sort_dir = effSortDir;
+        params.page = effPage;
+        params.page_size = effPageSize;
+      }
+
+      const data = await getDoctors(params);
+      setDoctorsList(data);
+      setTotalCount((data as any).total ?? data.length);
+    } catch (err: any) {
+      console.error('Failed to load doctors:', err);
+      setError(err.response?.data?.detail || 'Failed to load doctors');
+    } finally {
+      setLoading(false);
+    }
+  }, [gridMode, specialtyFilter, searchTerm, sortKey, sortDir, page, pageSize]);
+
+  useEffect(() => {
+    if (!props.doctors) {
+      fetchDoctors();
+    }
+  }, [specialtyFilter, gridMode]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const handleRefresh = () => {
+    if (props.onRefresh) {
+      props.onRefresh();
+    } else {
+      fetchDoctors();
+    }
+  };
+
+  const handleDataTableParamsChange = (params: {
+    page: number;
+    pageSize: number;
+    sortKey: string | null;
+    sortDir: 'asc' | 'desc';
+    search: string;
+  }) => {
+    setPage(params.page);
+    setPageSize(params.pageSize);
+    setSortKey(params.sortKey);
+    setSortDir(params.sortDir);
+    setSearchTerm(params.search);
+
+    if (gridMode === 'server') {
+      fetchDoctors({
+        page: params.page,
+        pageSize: params.pageSize,
+        sortKey: params.sortKey,
+        sortDir: params.sortDir,
+        search: params.search,
+      });
+    }
+  };
 
   const canCreate = userRole !== 'RECEPTIONIST' || currentUser?.permissions?.doctors?.create !== false;
   const canEdit = userRole !== 'RECEPTIONIST' || currentUser?.permissions?.doctors?.edit !== false;
@@ -61,7 +158,7 @@ export const Doctors: React.FC<DoctorsProps> = (props) => {
     try {
       await toggleDoctorStatus(doctor.id, nextStatus);
       showToast(`Doctor ${doctor.name} ${nextStatus ? 'activated' : 'deactivated'} successfully.`, 'success');
-      if (onRefresh) onRefresh();
+      handleRefresh();
     } catch (err: any) {
       showToast(err.response?.data?.detail || 'Failed to update doctor status', 'error');
     }
@@ -81,7 +178,7 @@ export const Doctors: React.FC<DoctorsProps> = (props) => {
     try {
       await deleteDoctor(doctor.id);
       showToast(`Doctor ${doctor.name} removed successfully.`, 'success');
-      if (onRefresh) onRefresh();
+      handleRefresh();
     } catch (err: any) {
       showToast(err.response?.data?.detail || 'Failed to delete doctor', 'error');
     }
@@ -263,34 +360,66 @@ export const Doctors: React.FC<DoctorsProps> = (props) => {
         </div>
       )}
 
+      {/* Error Alert */}
+      {error && (
+        <div className="p-4 rounded-xl bg-rose-50 border border-rose-200 text-rose-800 text-sm flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <AlertCircle className="w-4 h-4 text-rose-600 shrink-0" />
+            <span>{error}</span>
+          </div>
+          <button onClick={() => fetchDoctors()} className="text-xs font-bold underline hover:text-rose-900">
+            Retry
+          </button>
+        </div>
+      )}
+
       {/* DataTable with Search, Sort, Pagination, and Specialization Filter */}
       <DataTable<Doctor>
         title="Doctors & Consultation Schedules"
         subtitle="Physicians by master specializations, time margins (5, 10, 15 min), and active consultation slots"
-        data={filteredDoctors}
+        data={gridMode === 'server' ? doctors : filteredDoctors}
         columns={columns}
         keyExtractor={(d) => d.id}
+        loading={loading}
         searchPlaceholder="Search doctor name or specialization..."
+        mode={gridMode}
+        totalCount={totalCount}
+        page={page}
+        pageSize={pageSize}
+        sortKey={sortKey}
+        sortDir={sortDir}
+        searchTerm={searchTerm}
+        onParamsChange={handleDataTableParamsChange}
         extraFilters={
-          <div className="flex items-center gap-2">
-            <Filter className="w-3.5 h-3.5 text-slate-400" />
-            <span className="text-xs font-bold text-slate-600">Specialization:</span>
-            <select
+          <div className="w-56">
+            <SearchableSelect
+              size="sm"
+              placeholder="Filter by Specialization"
+              searchPlaceholder="Search specializations..."
               value={specialtyFilter}
-              onChange={(e) => setSpecialtyFilter(e.target.value)}
-              className="text-xs px-2.5 py-1.5 rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 bg-white"
-            >
-              <option value="ALL">All Specializations ({allSpecialties.length})</option>
-              {allSpecialties.map((spec) => (
-                <option key={spec} value={spec}>
-                  {spec}
-                </option>
-              ))}
-            </select>
+              onChange={(val) => {
+                setSpecialtyFilter(val);
+                setPage(1);
+                fetchDoctors({ specialty: val, page: 1 });
+              }}
+              options={[
+                { value: 'ALL', label: `All Specializations (${allSpecialties.length})` },
+                ...allSpecialties.map((spec) => ({ value: spec, label: spec }))
+              ]}
+            />
           </div>
         }
         actionButton={
           <div className="flex items-center gap-2">
+            <button
+              onClick={handleRefresh}
+              disabled={loading}
+              className="p-2.5 rounded-xl border border-slate-200 text-slate-600 hover:bg-slate-50 transition disabled:opacity-50"
+              title="Refresh Doctors"
+            >
+              <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin text-indigo-600' : ''}`} />
+            </button>
+
             <Link
               to="/specializations"
               className="px-3.5 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 font-semibold text-xs transition flex items-center gap-1.5"

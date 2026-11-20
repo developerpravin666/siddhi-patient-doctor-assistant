@@ -148,11 +148,11 @@ export interface ChatMessage {
 export interface AppContextType {
   currentUser: AdminUser | null;
   userRole: UserRole;
-  stats: DashboardStats;
-  appointments: Appointment[];
-  doctors: Doctor[];
-  clinics: Clinic[];
-  patients: Patient[];
-  loadData: () => Promise<void>;
+  stats?: DashboardStats;
+  appointments?: Appointment[];
+  doctors?: Doctor[];
+  clinics?: Clinic[];
+  patients?: Patient[];
+  loadData?: () => Promise<void>;
   handleLogout: () => void;
 }
