@@ -20,6 +20,7 @@ import {
 } from '../api/client';
 import { Specialization } from '../types';
 import { DataTable, ColumnDef } from '../components/DataTable';
+import { useConfirm } from '../context/ConfirmationContext';
 
 const specializationSchema = z.object({
   name: z.string().trim().min(2, 'Specialization name must be at least 2 characters').max(100, 'Name must not exceed 100 characters'),
@@ -44,6 +45,7 @@ export const SpecializationsManagement: React.FC = () => {
   });
   const [formErrors, setFormErrors] = useState<Record<string, string>>({});
   const [saving, setSaving] = useState(false);
+  const confirm = useConfirm();
 
   const loadData = async () => {
     try {
@@ -143,9 +145,16 @@ export const SpecializationsManagement: React.FC = () => {
   };
 
   const handleDelete = async (item: Specialization) => {
-    if (!window.confirm(`Are you sure you want to permanently delete "${item.name}"?`)) {
-      return;
-    }
+    const ok = await confirm({
+      title: 'Delete Master Specialization',
+      message: `Are you sure you want to permanently delete "${item.name}" from the master directory?`,
+      description: '⚠️ Physicians currently assigned to this specialization may need their profiles updated.',
+      confirmText: 'Delete Specialization',
+      cancelText: 'Keep Specialization',
+      variant: 'danger',
+    });
+    if (!ok) return;
+
     try {
       await deleteSpecialization(item.id);
       setSuccessMessage(`Specialization "${item.name}" deleted successfully.`);

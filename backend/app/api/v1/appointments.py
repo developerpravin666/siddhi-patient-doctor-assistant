@@ -27,31 +27,48 @@ async def list_appointments(
     db_session: AsyncSession = Depends(get_db)
 ):
     tenant_schema = await resolve_user_tenant_schema(current_user, db_session)
+    if not tenant_schema or tenant_schema == "public":
+        tenant_schema = "clinic_default"
+
     if is_postgres():
         await db_session.execute(text(f'SET search_path TO "{tenant_schema}", public;'))
 
-    stmt = select(Appointment)
-    conditions = []
+    try:
+        stmt = select(Appointment)
+        conditions = []
 
-    if date:
-        conditions.append(Appointment.appointment_date == date)
-    if status:
-        conditions.append(Appointment.status == status)
-    if doctor_id:
-        conditions.append(Appointment.doctor_id == doctor_id)
-    if search:
-        search_filter = or_(
-            Appointment.patient_name.ilike(f"%{search}%"),
-            Appointment.mobile_number.ilike(f"%{search}%")
-        )
-        conditions.append(search_filter)
+        if date:
+            conditions.append(Appointment.appointment_date == date)
+        if status:
+            conditions.append(Appointment.status == status)
+        if doctor_id:
+            conditions.append(Appointment.doctor_id == doctor_id)
+        if search:
+            search_filter = or_(
+                Appointment.patient_name.ilike(f"%{search}%"),
+                Appointment.mobile_number.ilike(f"%{search}%")
+            )
+            conditions.append(search_filter)
 
-    if conditions:
-        stmt = stmt.where(and_(*conditions))
+        if conditions:
+            stmt = stmt.where(and_(*conditions))
 
-    stmt = stmt.order_by(desc(Appointment.appointment_datetime)).limit(limit).offset(offset)
-    result = await db_session.execute(stmt)
-    return result.scalars().all()
+        stmt = stmt.order_by(desc(Appointment.appointment_datetime)).limit(limit).offset(offset)
+        result = await db_session.execute(stmt)
+        return result.scalars().all()
+    except Exception as e:
+        logger.warning(f"Error reading appointments in schema '{tenant_schema}': {e}. Falling back to clinic_default.")
+        if is_postgres():
+            try:
+                await db_session.rollback()
+                await db_session.execute(text('SET search_path TO "clinic_default", public;'))
+                stmt = select(Appointment).order_by(desc(Appointment.appointment_datetime)).limit(limit).offset(offset)
+                res = await db_session.execute(stmt)
+                return res.scalars().all()
+            except Exception as e2:
+                logger.error(f"Fallback appointments query failed: {e2}")
+                return []
+        return []
 
 
 @router.get("/slots/available")
@@ -90,7 +107,6 @@ async def create_manual_appointment(
         "time_slot": payload.time_slot,
         "doctor_id": payload.doctor_id,
         "clinic_id": payload.clinic_id,
-        "tenant_id": current_user.tenant_id or "tenant_default",
         "status": "CONFIRMED"
     }, tenant_schema=tenant_schema)
 

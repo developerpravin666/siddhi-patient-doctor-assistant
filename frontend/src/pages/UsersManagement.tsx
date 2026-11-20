@@ -8,13 +8,13 @@ import {
   XCircle, 
   Edit3,
   Trash2,
-  AlertTriangle,
   Lock
 } from 'lucide-react';
 import { useOutletContext, useNavigate } from 'react-router-dom';
 import { getUsers, updateUser, deleteUser } from '../api/client';
 import { AdminUser, UserRole, AppContextType } from '../types';
 import { DataTable, ColumnDef } from '../components/DataTable';
+import { useConfirm } from '../context/ConfirmationContext';
 
 interface UsersManagementProps {
   currentUser?: AdminUser | null;
@@ -38,10 +38,7 @@ export const UsersManagement: React.FC<UsersManagementProps> = (props) => {
   const [users, setUsers] = useState<AdminUser[]>([]);
   const [loading, setLoading] = useState(true);
   const [toastMessage, setToastMessage] = useState<{ text: string; type: 'success' | 'error' } | null>(null);
-
-  // Deletion Confirmation Modal State
-  const [userToDelete, setUserToDelete] = useState<AdminUser | null>(null);
-  const [deleting, setDeleting] = useState(false);
+  const confirm = useConfirm();
 
   const showToast = (text: string, type: 'success' | 'error') => {
     setToastMessage({ text, type });
@@ -74,18 +71,27 @@ export const UsersManagement: React.FC<UsersManagementProps> = (props) => {
     }
   };
 
-  const confirmDelete = async () => {
-    if (!userToDelete) return;
+  const handleDeleteUser = async (user: AdminUser) => {
+    const ok = await confirm({
+      title: 'Delete Staff Account',
+      message: (
+        <span>
+          Are you sure you want to permanently delete <strong className="text-slate-900">{user.full_name}</strong> (<code className="text-rose-600 font-mono">@{user.username}</code>)?
+        </span>
+      ),
+      description: '⚠️ All access and granular screen permissions for this staff member will be revoked immediately. This action cannot be undone.',
+      confirmText: 'Yes, Delete Account',
+      cancelText: 'Keep Account',
+      variant: 'danger',
+    });
+    if (!ok) return;
+
     try {
-      setDeleting(true);
-      await deleteUser(userToDelete.id);
-      showToast(`Staff account @${userToDelete.username} deleted successfully.`, 'success');
-      setUserToDelete(null);
+      await deleteUser(user.id);
+      showToast(`Staff account @${user.username} deleted successfully.`, 'success');
       loadUsers();
     } catch (err: any) {
       showToast(err.response?.data?.detail || 'Failed to delete staff account', 'error');
-    } finally {
-      setDeleting(false);
     }
   };
 
@@ -242,7 +248,7 @@ export const UsersManagement: React.FC<UsersManagementProps> = (props) => {
 
             {canDeleteUser ? (
               <button
-                onClick={() => setUserToDelete(user)}
+                onClick={() => handleDeleteUser(user)}
                 className="p-1 rounded-lg text-rose-600 hover:bg-rose-50 border border-rose-200 hover:border-rose-300 transition"
                 title={`Delete @${user.username}`}
               >
@@ -302,59 +308,6 @@ export const UsersManagement: React.FC<UsersManagementProps> = (props) => {
           </button>
         }
       />
-
-      {/* Delete Staff Confirmation Modal */}
-      {userToDelete && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/50 backdrop-blur-sm animate-fade-in">
-          <div className="bg-white rounded-2xl max-w-md w-full p-6 shadow-2xl border border-slate-100 space-y-4">
-            <div className="flex items-center gap-3 text-rose-600">
-              <div className="p-3 bg-rose-50 rounded-xl">
-                <AlertTriangle className="w-6 h-6" />
-              </div>
-              <div>
-                <h3 className="font-bold text-slate-900 text-base">Delete Staff Account</h3>
-                <p className="text-xs text-slate-500">This action cannot be undone</p>
-              </div>
-            </div>
-
-            <p className="text-xs text-slate-600 leading-relaxed">
-              Are you sure you want to permanently delete{' '}
-              <strong className="text-slate-900">{userToDelete.full_name}</strong> (
-              <code className="text-rose-600 font-mono">@{userToDelete.username}</code>)? All access and granular screen
-              permissions for this account will be revoked immediately.
-            </p>
-
-            <div className="flex items-center justify-end gap-3 pt-2">
-              <button
-                type="button"
-                onClick={() => setUserToDelete(null)}
-                disabled={deleting}
-                className="px-4 py-2 rounded-xl text-xs font-bold text-slate-600 hover:bg-slate-100 transition border border-slate-200"
-              >
-                Cancel
-              </button>
-              <button
-                type="button"
-                onClick={confirmDelete}
-                disabled={deleting}
-                className="px-4 py-2 rounded-xl text-xs font-bold bg-rose-600 hover:bg-rose-700 text-white transition shadow-sm flex items-center gap-1.5"
-              >
-                {deleting ? (
-                  <>
-                    <div className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                    <span>Deleting...</span>
-                  </>
-                ) : (
-                  <>
-                    <Trash2 className="w-3.5 h-3.5" />
-                    <span>Yes, Delete Account</span>
-                  </>
-                )}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   );
 };

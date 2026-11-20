@@ -36,7 +36,7 @@ export interface Tenant {
 
 export interface Appointment {
   id: string;
-  tenant_id: string;
+  tenant_id?: string;
   clinic_id: string;
   doctor_id?: string;
   patient_name: string;
@@ -67,7 +67,7 @@ export interface Doctor {
 
 export interface Clinic {
   id: string;
-  tenant_id: string;
+  tenant_id?: string;
   name: string;
   address: string;
   phone?: string | null;
@@ -88,7 +88,7 @@ export interface Clinic {
 
 export interface Patient {
   id: string;
-  tenant_id: string;
+  tenant_id?: string;
   full_name: string;
   mobile_number: string;
   email?: string | null;

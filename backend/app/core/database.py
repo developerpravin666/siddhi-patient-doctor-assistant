@@ -108,7 +108,7 @@ async def provision_tenant_schema(schema_name: str, eng=None) -> str:
 
         CREATE TABLE IF NOT EXISTS "{safe_schema}".clinics (
             id VARCHAR(36) PRIMARY KEY,
-            tenant_id VARCHAR(36) NOT NULL,
+            tenant_id VARCHAR(36),
             name VARCHAR(150) NOT NULL,
             address VARCHAR(255) NOT NULL,
             phone VARCHAR(30),
@@ -139,7 +139,7 @@ async def provision_tenant_schema(schema_name: str, eng=None) -> str:
 
         CREATE TABLE IF NOT EXISTS "{safe_schema}".patients (
             id VARCHAR(36) PRIMARY KEY,
-            tenant_id VARCHAR(36) NOT NULL,
+            tenant_id VARCHAR(36),
             full_name VARCHAR(120) NOT NULL,
             mobile_number VARCHAR(20) NOT NULL,
             email VARCHAR(100),
@@ -154,7 +154,7 @@ async def provision_tenant_schema(schema_name: str, eng=None) -> str:
 
         CREATE TABLE IF NOT EXISTS "{safe_schema}".appointments (
             id VARCHAR(36) PRIMARY KEY,
-            tenant_id VARCHAR(36) NOT NULL,
+            tenant_id VARCHAR(36),
             clinic_id VARCHAR(36) NOT NULL REFERENCES "{safe_schema}".clinics(id) ON DELETE CASCADE,
             doctor_id VARCHAR(36) REFERENCES "{safe_schema}".doctors(id) ON DELETE SET NULL,
             patient_id VARCHAR(36),
@@ -185,34 +185,29 @@ async def provision_tenant_schema(schema_name: str, eng=None) -> str:
         # Migrations & column drops for existing schemas
         schema_migrations = [
             f'CREATE TABLE IF NOT EXISTS "{safe_schema}".admin_users (id VARCHAR(36) PRIMARY KEY, username VARCHAR(50) UNIQUE NOT NULL, hashed_password VARCHAR(255) NOT NULL, full_name VARCHAR(100) NOT NULL, role VARCHAR(30) NOT NULL, tenant_id VARCHAR(36), clinic_id VARCHAR(36), permissions JSON, is_active BOOLEAN DEFAULT TRUE, created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP, updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP);',
+            f'ALTER TABLE "{safe_schema}".clinics ADD COLUMN IF NOT EXISTS tenant_id VARCHAR(36);',
             f'ALTER TABLE "{safe_schema}".clinics ADD COLUMN IF NOT EXISTS whatsapp_business_account_id VARCHAR(50);',
             f'ALTER TABLE "{safe_schema}".clinics ADD COLUMN IF NOT EXISTS whatsapp_access_token TEXT;',
             f'ALTER TABLE "{safe_schema}".clinics ADD COLUMN IF NOT EXISTS whatsapp_verify_token VARCHAR(100);',
             f'ALTER TABLE "{safe_schema}".clinics ADD COLUMN IF NOT EXISTS bot_config JSON;',
-            f'ALTER TABLE "{safe_schema}".doctors ALTER COLUMN specialty TYPE VARCHAR(255);',
+            f'ALTER TABLE "{safe_schema}".doctors ALTER COLUMN specialty TYPE TEXT;',
             f'ALTER TABLE "{safe_schema}".doctors ALTER COLUMN morning_slots TYPE TEXT;',
             f'ALTER TABLE "{safe_schema}".doctors ALTER COLUMN evening_slots TYPE TEXT;',
+            f'ALTER TABLE "{safe_schema}".patients ADD COLUMN IF NOT EXISTS tenant_id VARCHAR(36);',
             f'ALTER TABLE "{safe_schema}".patients ADD COLUMN IF NOT EXISTS email VARCHAR(100);',
             f'ALTER TABLE "{safe_schema}".patients ADD COLUMN IF NOT EXISTS gender VARCHAR(20);',
             f'ALTER TABLE "{safe_schema}".patients ADD COLUMN IF NOT EXISTS age INTEGER;',
             f'ALTER TABLE "{safe_schema}".patients ADD COLUMN IF NOT EXISTS address VARCHAR(255);',
             f'ALTER TABLE "{safe_schema}".patients ADD COLUMN IF NOT EXISTS status VARCHAR(20) DEFAULT \'ACTIVE\';',
             f'ALTER TABLE "{safe_schema}".patients ADD COLUMN IF NOT EXISTS is_active BOOLEAN DEFAULT TRUE;',
-            f'ALTER TABLE "{safe_schema}".clinics ALTER COLUMN phone DROP DEFAULT;',
-            f'ALTER TABLE "{safe_schema}".clinics ALTER COLUMN consultation_hours DROP DEFAULT;',
-            f'ALTER TABLE "{safe_schema}".doctors ALTER COLUMN specialty DROP DEFAULT;',
-            f'ALTER TABLE "{safe_schema}".doctors ALTER COLUMN available_days DROP DEFAULT;',
-            f'ALTER TABLE "{safe_schema}".doctors ALTER COLUMN morning_slots DROP DEFAULT;',
-            f'ALTER TABLE "{safe_schema}".doctors ALTER COLUMN evening_slots DROP DEFAULT;',
-            f'ALTER TABLE "{safe_schema}".appointments ALTER COLUMN doctor_name DROP DEFAULT;',
-            f'ALTER TABLE "{safe_schema}".appointments ALTER COLUMN clinic_name DROP DEFAULT;',
-            f'ALTER TABLE "{safe_schema}".appointments ALTER COLUMN clinic_address DROP DEFAULT;'
+            f'ALTER TABLE "{safe_schema}".appointments ADD COLUMN IF NOT EXISTS tenant_id VARCHAR(36);',
         ]
         for m_stmt in schema_migrations:
             try:
-                await conn.execute(text(m_stmt))
-            except Exception:
-                pass
+                async with conn.begin_nested():
+                    await conn.execute(text(m_stmt))
+            except Exception as e:
+                logger.debug(f"Optional migration skipped for {safe_schema}: {e}")
 
         logger.info(f"Tenant schema '{safe_schema}' provisioned successfully with isolated tables.")
 
@@ -355,7 +350,8 @@ async def init_db():
                             f'ALTER TABLE "{s_name}".clinics ALTER COLUMN consultation_hours TYPE TEXT;',
                         ]:
                             try:
-                                await conn.execute(text(t_sql))
+                                async with conn.begin_nested():
+                                    await conn.execute(text(t_sql))
                             except Exception:
                                 pass
                 except Exception:

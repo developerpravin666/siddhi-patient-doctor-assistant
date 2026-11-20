@@ -150,7 +150,7 @@ async def resolve_user_tenant_schema(user: AdminUser, db_session: AsyncSession) 
     if active_schema:
         return active_schema
 
-    return "public"
+    return "clinic_default"
 
 
 @router.post("/login", response_model=TokenResponse)

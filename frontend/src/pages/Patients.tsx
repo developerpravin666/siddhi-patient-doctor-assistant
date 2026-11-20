@@ -14,6 +14,7 @@ import { useOutletContext, useNavigate } from 'react-router-dom';
 import { Patient, UserRole, AdminUser, AppContextType } from '../types';
 import { deletePatient, togglePatientStatus } from '../api/client';
 import { DataTable, ColumnDef } from '../components/DataTable';
+import { useConfirm } from '../context/ConfirmationContext';
 
 interface PatientsProps {
   patients?: Patient[];
@@ -32,6 +33,7 @@ export const Patients: React.FC<PatientsProps> = (props) => {
 
   const [statusFilter, setStatusFilter] = useState<'ALL' | 'ACTIVE' | 'INACTIVE'>('ALL');
   const [toastMessage, setToastMessage] = useState<{ text: string; type: 'success' | 'error' } | null>(null);
+  const confirm = useConfirm();
 
   const canManage =
     userRole === 'SUPER_ADMIN' ||
@@ -60,9 +62,16 @@ export const Patients: React.FC<PatientsProps> = (props) => {
   };
 
   const handleDelete = async (patient: Patient) => {
-    if (!window.confirm(`Are you sure you want to delete patient "${patient.full_name}"? This action cannot be undone.`)) {
-      return;
-    }
+    const ok = await confirm({
+      title: 'Delete Patient Record',
+      message: `Are you sure you want to permanently delete patient "${patient.full_name}" (${patient.mobile_number})?`,
+      description: '⚠️ This will remove the patient demographic records. Previous appointment logs may remain archived.',
+      confirmText: 'Delete Patient',
+      cancelText: 'Keep Patient',
+      variant: 'danger',
+    });
+    if (!ok) return;
+
     try {
       await deletePatient(patient.id);
       showToast(`Patient ${patient.full_name} deleted successfully.`, 'success');

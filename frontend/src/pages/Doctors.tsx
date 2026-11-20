@@ -18,6 +18,7 @@ import { useOutletContext, useNavigate, Link } from 'react-router-dom';
 import { Doctor, UserRole, AdminUser, AppContextType } from '../types';
 import { deleteDoctor, toggleDoctorStatus } from '../api/client';
 import { DataTable, ColumnDef } from '../components/DataTable';
+import { useConfirm } from '../context/ConfirmationContext';
 
 interface DoctorsProps {
   doctors?: Doctor[];
@@ -44,6 +45,7 @@ export const Doctors: React.FC<DoctorsProps> = (props) => {
 
   const [specialtyFilter, setSpecialtyFilter] = useState('ALL');
   const [toastMessage, setToastMessage] = useState<{ text: string; type: 'success' | 'error' } | null>(null);
+  const confirm = useConfirm();
 
   const canCreate = userRole !== 'RECEPTIONIST' || currentUser?.permissions?.doctors?.create !== false;
   const canEdit = userRole !== 'RECEPTIONIST' || currentUser?.permissions?.doctors?.edit !== false;
@@ -66,9 +68,16 @@ export const Doctors: React.FC<DoctorsProps> = (props) => {
   };
 
   const handleDeleteDoctor = async (doctor: Doctor) => {
-    if (!window.confirm(`Are you sure you want to delete profile for Dr. ${doctor.name}? This action cannot be undone.`)) {
-      return;
-    }
+    const ok = await confirm({
+      title: 'Delete Doctor Profile',
+      message: `Are you sure you want to permanently delete profile for Dr. ${doctor.name}?`,
+      description: '⚠️ This action cannot be undone. All consultation schedules and slot configurations for this doctor will be erased.',
+      confirmText: 'Delete Doctor Profile',
+      cancelText: 'Keep Doctor',
+      variant: 'danger',
+    });
+    if (!ok) return;
+
     try {
       await deleteDoctor(doctor.id);
       showToast(`Doctor ${doctor.name} removed successfully.`, 'success');

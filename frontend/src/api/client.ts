@@ -82,6 +82,11 @@ export const getTenants = async (): Promise<Tenant[]> => {
   return res.data;
 };
 
+export const getTenant = async (id: string): Promise<Tenant> => {
+  const res = await api.get(`/api/v1/admin/tenants/${id}`);
+  return res.data;
+};
+
 export const createTenant = async (data: {
   name: string;
   schema_name?: string;

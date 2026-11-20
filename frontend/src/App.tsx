@@ -17,7 +17,9 @@ import { AppointmentForm } from './pages/AppointmentForm';
 import { DoctorForm } from './pages/DoctorForm';
 import { PatientForm } from './pages/PatientForm';
 import { SpecializationsManagement } from './pages/SpecializationsManagement';
+import { TenantForm } from './pages/TenantForm';
 import { getStoredUser } from './api/client';
+import { ConfirmationProvider } from './context/ConfirmationContext';
 
 /**
  * Role-aware root redirect component.
@@ -43,7 +45,8 @@ const RootRedirect: React.FC = () => {
 export const App: React.FC = () => {
   return (
     <BrowserRouter>
-      <Routes>
+      <ConfirmationProvider>
+        <Routes>
         {/* Public Authentication Route */}
         <Route path="/login" element={<LoginView />} />
 
@@ -74,6 +77,24 @@ export const App: React.FC = () => {
             element={
               <ProtectedRoute allowedRoles={['SUPER_ADMIN']}>
                 <TenantsManagement />
+              </ProtectedRoute>
+            }
+          />
+
+          <Route
+            path="tenants/new"
+            element={
+              <ProtectedRoute allowedRoles={['SUPER_ADMIN']}>
+                <TenantForm />
+              </ProtectedRoute>
+            }
+          />
+
+          <Route
+            path="tenants/:id/edit"
+            element={
+              <ProtectedRoute allowedRoles={['SUPER_ADMIN']}>
+                <TenantForm />
               </ProtectedRoute>
             }
           />
@@ -226,8 +247,9 @@ export const App: React.FC = () => {
         {/* Fallback Catch-All Route */}
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
-    </BrowserRouter>
-  );
+    </ConfirmationProvider>
+  </BrowserRouter>
+);
 };
 
 export default App;

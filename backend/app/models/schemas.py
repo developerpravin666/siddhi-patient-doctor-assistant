@@ -122,7 +122,7 @@ class AppointmentUpdate(BaseModel):
 
 class AppointmentOut(BaseModel):
     id: str
-    tenant_id: str
+    tenant_id: Optional[str] = None
     clinic_id: str
     doctor_id: Optional[str] = None
     patient_name: str
@@ -223,7 +223,7 @@ class DoctorOut(BaseModel):
 # Clinic Schemas
 # -----------------------------------------------------------------------------
 class ClinicCreate(BaseModel):
-    tenant_id: str
+    tenant_id: Optional[str] = None
     name: str
     address: str
     phone: Optional[str] = None
@@ -242,7 +242,7 @@ class ClinicUpdate(BaseModel):
 
 class ClinicOut(BaseModel):
     id: str
-    tenant_id: str
+    tenant_id: Optional[str] = None
     name: str
     address: str
     phone: Optional[str] = None
@@ -290,7 +290,7 @@ class PatientStatusUpdate(BaseModel):
 
 class PatientOut(BaseModel):
     id: str
-    tenant_id: str
+    tenant_id: Optional[str] = None
     full_name: str
     mobile_number: str
     email: Optional[str] = None

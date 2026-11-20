@@ -79,7 +79,7 @@ class Clinic(Base):
     __tablename__ = "clinics"
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=generate_uuid)
-    tenant_id: Mapped[str] = mapped_column(String(36), ForeignKey("tenants.id"), nullable=False)
+    tenant_id: Mapped[Optional[str]] = mapped_column(String(36), ForeignKey("tenants.id"), nullable=True, default=None)
     name: Mapped[str] = mapped_column(String(150), nullable=False)
     address: Mapped[str] = mapped_column(String(255), nullable=False)
     phone: Mapped[Optional[str]] = mapped_column(String(30), nullable=True)
@@ -121,7 +121,7 @@ class Patient(Base):
     __tablename__ = "patients"
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=generate_uuid)
-    tenant_id: Mapped[str] = mapped_column(String(36), nullable=False, index=True)
+    tenant_id: Mapped[Optional[str]] = mapped_column(String(36), nullable=True, default=None, index=True)
     full_name: Mapped[str] = mapped_column(String(120), nullable=False)
     mobile_number: Mapped[str] = mapped_column(String(20), nullable=False, index=True)
     email: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
@@ -138,7 +138,7 @@ class Appointment(Base):
     __tablename__ = "appointments"
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=generate_uuid)
-    tenant_id: Mapped[str] = mapped_column(String(36), nullable=False, index=True)
+    tenant_id: Mapped[Optional[str]] = mapped_column(String(36), nullable=True, default=None, index=True)
     clinic_id: Mapped[str] = mapped_column(String(36), ForeignKey("clinics.id"), nullable=False, index=True)
     doctor_id: Mapped[Optional[str]] = mapped_column(String(36), ForeignKey("doctors.id"), nullable=True)
     patient_id: Mapped[Optional[str]] = mapped_column(String(36), nullable=True)

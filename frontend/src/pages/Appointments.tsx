@@ -15,6 +15,7 @@ import { useOutletContext, useNavigate } from 'react-router-dom';
 import { Appointment, UserRole, AdminUser, AppContextType } from '../types';
 import { updateAppointmentStatus } from '../api/client';
 import { DataTable, ColumnDef } from '../components/DataTable';
+import { useConfirm } from '../context/ConfirmationContext';
 
 interface AppointmentsProps {
   appointments?: Appointment[];
@@ -33,6 +34,7 @@ export const Appointments: React.FC<AppointmentsProps> = (props) => {
 
   const [statusFilter, setStatusFilter] = useState('ALL');
   const [toastMessage, setToastMessage] = useState<{ text: string; type: 'success' | 'error' } | null>(null);
+  const confirm = useConfirm();
 
   // Dynamic granular action permissions
   const canCreate = userRole !== 'RECEPTIONIST' || currentUser?.permissions?.appointments?.create !== false;
@@ -44,7 +46,18 @@ export const Appointments: React.FC<AppointmentsProps> = (props) => {
     setTimeout(() => setToastMessage(null), 4000);
   };
 
-  const handleStatusChange = async (id: string, newStatus: string) => {
+  const handleStatusChange = async (id: string, newStatus: string, patientName?: string) => {
+    if (newStatus === 'CANCELLED') {
+      const ok = await confirm({
+        title: 'Cancel Patient Appointment',
+        message: `Are you sure you want to cancel the appointment for ${patientName || 'this patient'}?`,
+        description: '⚠️ The slot will be freed and made available for other patients to book via WhatsApp or front desk.',
+        confirmText: 'Yes, Cancel Appointment',
+        cancelText: 'Keep Appointment',
+        variant: 'warning',
+      });
+      if (!ok) return;
+    }
     try {
       await updateAppointmentStatus(id, { status: newStatus });
       showToast(`Appointment status updated to ${newStatus}`, 'success');
@@ -177,7 +190,7 @@ export const Appointments: React.FC<AppointmentsProps> = (props) => {
               )}
               {canDelete && (
                 <button
-                  onClick={() => handleStatusChange(appt.id, 'CANCELLED')}
+                  onClick={() => handleStatusChange(appt.id, 'CANCELLED', appt.patient_name)}
                   className="p-1.5 text-rose-600 hover:bg-rose-50 rounded-lg transition inline-flex items-center border border-rose-200"
                   title="Cancel Appointment"
                 >

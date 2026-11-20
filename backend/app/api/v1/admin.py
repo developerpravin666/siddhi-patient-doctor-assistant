@@ -164,6 +164,19 @@ async def create_tenant(
     return tenant
 
 
+@router.get("/tenants/{tenant_id}", response_model=TenantOut)
+async def get_tenant(
+    tenant_id: str,
+    db_session: AsyncSession = Depends(get_db),
+    current_user: AdminUser = Depends(require_roles(["SUPER_ADMIN"]))
+):
+    stmt = select(Tenant).where(Tenant.id == tenant_id)
+    tenant = (await db_session.execute(stmt)).scalar_one_or_none()
+    if not tenant:
+        raise HTTPException(status_code=404, detail="Tenant not found")
+    return tenant
+
+
 @router.put("/tenants/{tenant_id}", response_model=TenantOut)
 async def update_tenant(
     tenant_id: str,
@@ -599,14 +612,33 @@ async def list_doctors(
     db_session: AsyncSession = Depends(get_db)
 ):
     tenant_schema = await resolve_user_tenant_schema(current_user, db_session)
+    if not tenant_schema or tenant_schema == "public":
+        tenant_schema = "clinic_default"
+
     if is_postgres():
         await db_session.execute(text(f'SET search_path TO "{tenant_schema}", public;'))
 
-    stmt = select(Doctor)
-    if clinic_id:
-        stmt = stmt.where(Doctor.clinic_id == clinic_id)
-    result = await db_session.execute(stmt)
-    return result.scalars().all()
+    try:
+        stmt = select(Doctor)
+        if clinic_id:
+            stmt = stmt.where(Doctor.clinic_id == clinic_id)
+        result = await db_session.execute(stmt)
+        return result.scalars().all()
+    except Exception as e:
+        logger.warning(f"Error reading doctors in schema '{tenant_schema}': {e}. Falling back to clinic_default.")
+        if is_postgres():
+            try:
+                await db_session.rollback()
+                await db_session.execute(text('SET search_path TO "clinic_default", public;'))
+                stmt = select(Doctor)
+                if clinic_id:
+                    stmt = stmt.where(Doctor.clinic_id == clinic_id)
+                res = await db_session.execute(stmt)
+                return res.scalars().all()
+            except Exception as e2:
+                logger.error(f"Fallback doctor query failed: {e2}")
+                return []
+        return []
 
 
 @router.get("/doctors/{doctor_id}", response_model=DoctorOut)
@@ -819,17 +851,38 @@ async def list_patients(
     db_session: AsyncSession = Depends(get_db)
 ):
     tenant_schema = await resolve_user_tenant_schema(current_user, db_session)
+    if not tenant_schema or tenant_schema == "public":
+        tenant_schema = "clinic_default"
+
     if is_postgres():
         await db_session.execute(text(f'SET search_path TO "{tenant_schema}", public;'))
 
-    stmt = select(Patient)
-    if search:
-        stmt = stmt.where(Patient.full_name.ilike(f"%{search}%") | Patient.mobile_number.ilike(f"%{search}%"))
-    if status_filter:
-        stmt = stmt.where(Patient.status == status_filter.upper())
-    stmt = stmt.limit(limit).offset(offset)
-    result = await db_session.execute(stmt)
-    return result.scalars().all()
+    try:
+        stmt = select(Patient)
+        if search:
+            stmt = stmt.where(Patient.full_name.ilike(f"%{search}%") | Patient.mobile_number.ilike(f"%{search}%"))
+        if status_filter:
+            stmt = stmt.where(Patient.status == status_filter.upper())
+        stmt = stmt.limit(limit).offset(offset)
+        result = await db_session.execute(stmt)
+        return result.scalars().all()
+    except Exception as e:
+        logger.warning(f"Error reading patients in schema '{tenant_schema}': {e}. Falling back to clinic_default.")
+        if is_postgres():
+            try:
+                await db_session.rollback()
+                await db_session.execute(text('SET search_path TO "clinic_default", public;'))
+                stmt = select(Patient)
+                if search:
+                    stmt = stmt.where(Patient.full_name.ilike(f"%{search}%") | Patient.mobile_number.ilike(f"%{search}%"))
+                if status_filter:
+                    stmt = stmt.where(Patient.status == status_filter.upper())
+                res = await db_session.execute(stmt.limit(limit).offset(offset))
+                return res.scalars().all()
+            except Exception as e2:
+                logger.error(f"Fallback patient query failed: {e2}")
+                return []
+        return []
 
 
 @router.get("/patients/{patient_id}", response_model=PatientOut)
@@ -860,7 +913,6 @@ async def create_patient(
         await db_session.execute(text(f'SET search_path TO "{tenant_schema}", public;'))
 
     patient = Patient(
-        tenant_id=current_user.tenant_id or "tenant_default",
         full_name=payload.full_name.strip(),
         mobile_number=payload.mobile_number.strip(),
         email=payload.email.strip() if payload.email else None,

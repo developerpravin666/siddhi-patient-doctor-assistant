@@ -142,18 +142,14 @@ class DatabaseService:
                     tz_name=tz_name
                 )
 
-                # Ensure patient record exists
+                # Ensure patient record exists within this tenant schema
                 patient_stmt = select(Patient).where(
-                    and_(
-                        Patient.tenant_id == tenant_id,
-                        Patient.mobile_number == data["mobile_number"].strip()
-                    )
+                    Patient.mobile_number == data["mobile_number"].strip()
                 )
                 patient_res = await session.execute(patient_stmt)
                 patient = patient_res.scalar_one_or_none()
                 if not patient:
                     patient = Patient(
-                        tenant_id=tenant_id,
                         full_name=data["patient_name"].strip(),
                         mobile_number=data["mobile_number"].strip()
                     )
@@ -161,7 +157,6 @@ class DatabaseService:
                     await session.flush()
 
                 new_appointment = Appointment(
-                    tenant_id=tenant_id,
                     clinic_id=clinic_id,
                     doctor_id=doctor_id,
                     patient_id=patient.id,
