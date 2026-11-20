@@ -13,7 +13,9 @@ class OrchestrationPipeline:
     async def process_user_message(
         phone_number: str,
         message_text: str,
-        send_whatsapp_reply: bool = True
+        send_whatsapp_reply: bool = True,
+        recipient_phone_number_id: str = '',
+        tenant_schema: str = ''
     ) -> Tuple[str, Dict[str, Any], list]:
         """
         Orchestration pipeline:
@@ -27,6 +29,8 @@ class OrchestrationPipeline:
 
         # 1. Fetch current session
         session = await session_service.get_session(phone_number)
+        if tenant_schema:
+            session["tenant_schema"] = tenant_schema
 
         # 2. Extract multi-turn history
         history = session.get("history", [])
@@ -48,7 +52,11 @@ class OrchestrationPipeline:
 
         # 6. Send WhatsApp message if inbound from real webhook
         if send_whatsapp_reply:
-            await whatsapp_service.send_text_message(phone_number, reply_text)
+            await whatsapp_service.send_text_message(
+                recipient_phone=phone_number,
+                text=reply_text,
+                custom_phone_number_id=recipient_phone_number_id
+            )
 
         return reply_text, updated_session, executed_tools
 

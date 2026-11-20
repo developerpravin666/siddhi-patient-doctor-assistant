@@ -414,7 +414,7 @@ export const updateWhatsAppConfig = async (data: Partial<WhatsAppConfig>): Promi
   return res.data;
 };
 
-export const testWhatsAppConnection = async (testMobileNumber: string): Promise<{ status: string; message: string }> => {
+export const testWhatsAppConnection = async (testMobileNumber: string): Promise<{ status: string; message: string; is_live?: boolean }> => {
   const res = await api.post('/api/v1/admin/whatsapp/test', { test_mobile_number: testMobileNumber });
   return res.data;
 };

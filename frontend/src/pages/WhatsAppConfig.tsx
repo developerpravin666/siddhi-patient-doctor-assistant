@@ -9,6 +9,10 @@ import {
   UserCheck,
   Clock,
   Save,
+  Copy,
+  Check,
+  ExternalLink,
+  Radio
 } from 'lucide-react';
 import { useOutletContext } from 'react-router-dom';
 import { WhatsAppConfig, Doctor, AdminUser, UserRole, AppContextType } from '../types';
@@ -51,10 +55,22 @@ export const WhatsAppConfigPage: React.FC<WhatsAppConfigProps> = (props) => {
   // Testing states
   const [testNumber, setTestNumber] = useState('919823012345');
   const [testingConnection, setTestingConnection] = useState(false);
+  const [testResult, setTestResult] = useState<{ status: string; message: string; is_live?: boolean } | null>(null);
+  const [copiedField, setCopiedField] = useState<string | null>(null);
   const [formErrors, setFormErrors] = useState<Record<string, string>>({});
   const [toastMessage, setToastMessage] = useState<{ text: string; type: 'success' | 'error' } | null>(null);
 
   const canEdit = userRole === 'SUPER_ADMIN' || userRole === 'CLINIC_ADMIN';
+
+  const webhookCallbackUrl = typeof window !== 'undefined'
+    ? `${window.location.origin}/api/v1/webhook`
+    : 'https://<your-domain>/api/v1/webhook';
+
+  const handleCopy = (text: string, fieldName: string) => {
+    navigator.clipboard.writeText(text);
+    setCopiedField(fieldName);
+    setTimeout(() => setCopiedField(null), 2000);
+  };
 
   const showToast = (text: string, type: 'success' | 'error' = 'success') => {
     setToastMessage({ text, type });
@@ -143,14 +159,18 @@ export const WhatsAppConfigPage: React.FC<WhatsAppConfigProps> = (props) => {
     }
     try {
       setTestingConnection(true);
+      setTestResult(null);
       const res = await testWhatsAppConnection(testNumber.trim());
+      setTestResult(res);
       if (res.status === 'SUCCESS') {
-        showToast('Test WhatsApp message dispatched successfully!');
+        showToast(res.message || 'Test WhatsApp message dispatched successfully!');
       } else {
         showToast(res.message || 'WhatsApp message dispatch failed. Verify access token.', 'error');
       }
     } catch (err: any) {
-      showToast(err.response?.data?.detail || 'Failed to trigger test message', 'error');
+      const errMsg = err.response?.data?.detail || 'Failed to trigger test message';
+      setTestResult({ status: 'FAILED', message: errMsg, is_live: false });
+      showToast(errMsg, 'error');
     } finally {
       setTestingConnection(false);
     }
@@ -308,6 +328,77 @@ export const WhatsAppConfigPage: React.FC<WhatsAppConfigProps> = (props) => {
               </div>
             </div>
 
+            {/* Meta Webhook Setup Quick Reference Card */}
+            <div className="bg-slate-50 border border-slate-200 rounded-2xl p-5 space-y-3.5 text-xs">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <div className="w-7 h-7 rounded-lg bg-indigo-100 text-indigo-700 flex items-center justify-center font-bold">
+                    <Radio className="w-3.5 h-3.5" />
+                  </div>
+                  <div>
+                    <h4 className="font-bold text-slate-900 text-xs">Meta Webhook Setup Coordinates</h4>
+                    <p className="text-[11px] text-slate-500">Configure these exact values in your Meta App Dashboard</p>
+                  </div>
+                </div>
+                <a
+                  href="https://developers.facebook.com/apps/"
+                  target="_blank"
+                  rel="noreferrer"
+                  className="inline-flex items-center gap-1 text-[11px] font-semibold text-indigo-600 hover:text-indigo-800 transition"
+                >
+                  Meta Developer Console <ExternalLink className="w-3 h-3" />
+                </a>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3 pt-1">
+                {/* Callback URL */}
+                <div className="p-3 bg-white rounded-xl border border-slate-200 space-y-1">
+                  <span className="block text-[10px] uppercase font-bold text-slate-400 tracking-wider">Callback URL</span>
+                  <div className="flex items-center justify-between gap-2">
+                    <code className="text-[11px] font-mono text-slate-800 truncate" title={webhookCallbackUrl}>
+                      {webhookCallbackUrl}
+                    </code>
+                    <button
+                      type="button"
+                      onClick={() => handleCopy(webhookCallbackUrl, 'callback')}
+                      className="p-1 hover:bg-slate-100 text-slate-500 hover:text-slate-800 rounded transition shrink-0"
+                      title="Copy Callback URL"
+                    >
+                      {copiedField === 'callback' ? <Check className="w-3.5 h-3.5 text-emerald-600" /> : <Copy className="w-3.5 h-3.5" />}
+                    </button>
+                  </div>
+                </div>
+
+                {/* Verify Token */}
+                <div className="p-3 bg-white rounded-xl border border-slate-200 space-y-1">
+                  <span className="block text-[10px] uppercase font-bold text-slate-400 tracking-wider">Verify Token</span>
+                  <div className="flex items-center justify-between gap-2">
+                    <code className="text-[11px] font-mono text-slate-800 truncate" title={verifyToken}>
+                      {verifyToken || 'siddhi_patient_assistant_verify_token_secure_2026'}
+                    </code>
+                    <button
+                      type="button"
+                      onClick={() => handleCopy(verifyToken || 'siddhi_patient_assistant_verify_token_secure_2026', 'token')}
+                      className="p-1 hover:bg-slate-100 text-slate-500 hover:text-slate-800 rounded transition shrink-0"
+                      title="Copy Verify Token"
+                    >
+                      {copiedField === 'token' ? <Check className="w-3.5 h-3.5 text-emerald-600" /> : <Copy className="w-3.5 h-3.5" />}
+                    </button>
+                  </div>
+                </div>
+              </div>
+
+              <div className="flex items-center gap-2 text-[11px] text-slate-600 bg-white p-2.5 rounded-xl border border-slate-200">
+                <span className="font-semibold text-slate-700">Subscribed Webhook Fields:</span>
+                <span className="inline-flex items-center px-2 py-0.5 rounded-md bg-emerald-50 text-emerald-700 border border-emerald-200 font-mono text-[10px] font-bold">
+                  messages
+                </span>
+                <span className="text-slate-400 text-[10px] ml-auto">
+                  Click 'Manage' in Meta &gt; WhatsApp &gt; Webhook &gt; Check 'messages'
+                </span>
+              </div>
+            </div>
+
             {/* Patient Booking Flow & Bot Settings Card */}
             <div className="bg-white rounded-2xl p-6 border border-slate-200 shadow-sm space-y-4">
               <div className="flex items-center gap-2 border-b border-slate-100 pb-3">
@@ -427,7 +518,7 @@ export const WhatsAppConfigPage: React.FC<WhatsAppConfigProps> = (props) => {
           </form>
 
           {/* Test WhatsApp Connection Card */}
-          <div className="bg-white rounded-2xl p-6 border border-slate-200 shadow-sm space-y-3 text-xs">
+          <div className="bg-white rounded-2xl p-6 border border-slate-200 shadow-sm space-y-3.5 text-xs">
             <h4 className="font-bold text-slate-900 text-sm flex items-center gap-2">
               <Send className="w-4 h-4 text-brand-600" /> Test WhatsApp Connection & Message Dispatch
             </h4>
@@ -452,6 +543,39 @@ export const WhatsAppConfigPage: React.FC<WhatsAppConfigProps> = (props) => {
                 {testingConnection ? 'Sending...' : 'Send Live Test Ping'}
               </button>
             </div>
+
+            {/* Test Execution Result Box */}
+            {testResult && (
+              <div
+                className={`p-3.5 rounded-xl border flex items-start gap-2.5 text-xs transition-all ${
+                  testResult.status === 'SUCCESS'
+                    ? testResult.is_live
+                      ? 'bg-emerald-50 border-emerald-200 text-emerald-900'
+                      : 'bg-amber-50 border-amber-200 text-amber-900'
+                    : 'bg-rose-50 border-rose-200 text-rose-900'
+                }`}
+              >
+                {testResult.status === 'SUCCESS' ? (
+                  testResult.is_live ? (
+                    <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0 mt-0.5" />
+                  ) : (
+                    <AlertCircle className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
+                  )
+                ) : (
+                  <AlertCircle className="w-4 h-4 text-rose-600 shrink-0 mt-0.5" />
+                )}
+                <div className="space-y-1">
+                  <p className="font-bold">
+                    {testResult.status === 'SUCCESS'
+                      ? testResult.is_live
+                        ? 'WhatsApp Cloud API Ping Delivered'
+                        : 'Simulated Sandbox Dispatch'
+                      : 'WhatsApp Dispatch Failed'}
+                  </p>
+                  <p className="text-[11px] leading-relaxed opacity-90">{testResult.message}</p>
+                </div>
+              </div>
+            )}
           </div>
         </div>
 

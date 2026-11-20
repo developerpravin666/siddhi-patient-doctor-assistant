@@ -1331,15 +1331,22 @@ async def get_whatsapp_config(
         "enable_ai_bot": True
     }
 
+    eff_phone_id = (clinic.whatsapp_phone_number_id or "").strip() or (settings.WHATSAPP_PHONE_NUMBER_ID or "").strip()
+    eff_waba_id = (clinic.whatsapp_business_account_id or "").strip() or (settings.WHATSAPP_BUSINESS_ACCOUNT_ID or "").strip()
+    eff_token = (clinic.whatsapp_access_token or "").strip() or (settings.WHATSAPP_ACCESS_TOKEN or "").strip()
+    eff_verify_token = (clinic.whatsapp_verify_token or "").strip() or (settings.WHATSAPP_VERIFY_TOKEN or "siddhi_patient_assistant_verify_token_secure_2026").strip()
+
+    is_live = bool(eff_phone_id and eff_token and not eff_phone_id.startswith("12345"))
+
     return WhatsAppConfigOut(
         clinic_id=clinic.id,
         clinic_name=clinic.name,
-        whatsapp_phone_number_id=clinic.whatsapp_phone_number_id or settings.WHATSAPP_PHONE_NUMBER_ID,
-        whatsapp_business_account_id=clinic.whatsapp_business_account_id or settings.WHATSAPP_BUSINESS_ACCOUNT_ID,
-        whatsapp_access_token=clinic.whatsapp_access_token or (settings.WHATSAPP_ACCESS_TOKEN[:10] + "..." if settings.WHATSAPP_ACCESS_TOKEN else None),
-        whatsapp_verify_token=clinic.whatsapp_verify_token or settings.WHATSAPP_VERIFY_TOKEN,
+        whatsapp_phone_number_id=eff_phone_id or None,
+        whatsapp_business_account_id=eff_waba_id or None,
+        whatsapp_access_token=eff_token or None,
+        whatsapp_verify_token=eff_verify_token or None,
         bot_config=clinic.bot_config or default_bot_config,
-        is_live=bool(clinic.whatsapp_phone_number_id or settings.WHATSAPP_PHONE_NUMBER_ID)
+        is_live=is_live
     )
 
 
@@ -1378,15 +1385,21 @@ async def update_whatsapp_config(
     except Exception:
         pass
 
+    eff_phone_id = (clinic.whatsapp_phone_number_id or "").strip() or (settings.WHATSAPP_PHONE_NUMBER_ID or "").strip()
+    eff_waba_id = (clinic.whatsapp_business_account_id or "").strip() or (settings.WHATSAPP_BUSINESS_ACCOUNT_ID or "").strip()
+    eff_token = (clinic.whatsapp_access_token or "").strip() or (settings.WHATSAPP_ACCESS_TOKEN or "").strip()
+    eff_verify_token = (clinic.whatsapp_verify_token or "").strip() or (settings.WHATSAPP_VERIFY_TOKEN or "siddhi_patient_assistant_verify_token_secure_2026").strip()
+    is_live = bool(eff_phone_id and eff_token and not eff_phone_id.startswith("12345"))
+
     return WhatsAppConfigOut(
         clinic_id=clinic.id,
         clinic_name=clinic.name,
-        whatsapp_phone_number_id=clinic.whatsapp_phone_number_id,
-        whatsapp_business_account_id=clinic.whatsapp_business_account_id,
-        whatsapp_access_token=clinic.whatsapp_access_token,
-        whatsapp_verify_token=clinic.whatsapp_verify_token,
+        whatsapp_phone_number_id=eff_phone_id or None,
+        whatsapp_business_account_id=eff_waba_id or None,
+        whatsapp_access_token=eff_token or None,
+        whatsapp_verify_token=eff_verify_token or None,
         bot_config=clinic.bot_config,
-        is_live=bool(clinic.whatsapp_phone_number_id)
+        is_live=is_live
     )
 
 
@@ -1396,17 +1409,54 @@ async def test_whatsapp_connection(
     current_user: AdminUser = Depends(require_roles(["SUPER_ADMIN", "CLINIC_ADMIN"])),
     db_session: AsyncSession = Depends(get_db)
 ):
+    tenant_schema = await resolve_user_tenant_schema(current_user, db_session)
+    if is_postgres():
+        await db_session.execute(text(f'SET search_path TO "{tenant_schema}", public;'))
+
+    stmt = select(Clinic).limit(1)
+    clinic = (await db_session.execute(stmt)).scalar_one_or_none()
+
+    eff_phone_id = (clinic.whatsapp_phone_number_id if clinic and clinic.whatsapp_phone_number_id else None) or settings.WHATSAPP_PHONE_NUMBER_ID
+    eff_token = (clinic.whatsapp_access_token if clinic and clinic.whatsapp_access_token else None) or settings.WHATSAPP_ACCESS_TOKEN
+
     from app.services.whatsapp_service import WhatsAppService
-    wa_svc = WhatsAppService()
+    wa_svc = WhatsAppService(phone_number_id=eff_phone_id, access_token=eff_token)
+
+    now_str = datetime.now().strftime("%Y-%m-%d %I:%M %p")
+    clinic_name = clinic.name if clinic else "Clinic"
+    test_msg = (
+        f"✅ *WhatsApp API Test Successful!*\n\n"
+        f"Connected to *Siddhi Patient-Doctor Assistant* for *{clinic_name}*.\n"
+        f"• *Authorized Staff:* {current_user.full_name}\n"
+        f"• *Timestamp:* {now_str}\n\n"
+        f"Your Meta WhatsApp Cloud API credentials are live and ready for patient booking interactions."
+    )
+
     success = await wa_svc.send_text_message(
         payload.test_mobile_number.strip(),
-        f"✅ *WhatsApp API Test Successful!*\n\nConnected to Siddhi Patient-Doctor Assistant for {current_user.full_name}."
+        test_msg
     )
-    return {
-        "status": "SUCCESS" if success else "FAILED",
-        "mobile_number": payload.test_mobile_number,
-        "message": "Test message dispatched successfully" if success else "Could not dispatch message. Verify credentials."
-    }
+
+    if success:
+        is_simulated = not wa_svc._is_configured()
+        return {
+            "status": "SUCCESS",
+            "mobile_number": payload.test_mobile_number,
+            "is_live": not is_simulated,
+            "message": (
+                "Live test message dispatched successfully via Meta WhatsApp Cloud API!"
+                if not is_simulated else
+                "Message processed successfully in Simulated/Sandbox mode. To send live WhatsApp messages, configure your Phone Number ID and Permanent Access Token above."
+            )
+        }
+    else:
+        err_detail = wa_svc.last_error or "Could not dispatch message. Verify Phone Number ID, Access Token, and recipient phone number."
+        return {
+            "status": "FAILED",
+            "mobile_number": payload.test_mobile_number,
+            "is_live": False,
+            "message": f"Message delivery failed: {err_detail}"
+        }
 
 
 # -----------------------------------------------------------------------------

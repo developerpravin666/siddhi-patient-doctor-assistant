@@ -123,6 +123,8 @@ class GeminiService:
                         # Execute tool
                         tool_fn = TOOL_DISPATCHER.get(tool_name)
                         if tool_fn:
+                            if "tenant_schema" not in tool_args and session_state.get("tenant_schema"):
+                                tool_args["tenant_schema"] = session_state["tenant_schema"]
                             tool_result = await tool_fn(**tool_args)
                         else:
                             tool_result = {"error": f"Tool {tool_name} not found"}

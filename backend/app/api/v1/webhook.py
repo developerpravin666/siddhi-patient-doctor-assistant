@@ -3,6 +3,9 @@ from typing import Dict, Any
 from fastapi import APIRouter, Query, Response, status, Request, HTTPException, BackgroundTasks
 from app.core.config import settings
 from app.core import security
+from app.core.database import AsyncSessionLocal, is_postgres
+from app.models.domain import Clinic, Tenant
+from sqlalchemy import select, text
 from app.services.orchestration_service import orchestration_pipeline
 from app.services.session_service import session_service
 from app.models.schemas import SimulatorChatRequest, SimulatorChatResponse
@@ -19,11 +22,40 @@ async def verify_webhook(
 ):
     """
     Meta WhatsApp Cloud API Webhook Verification Endpoint.
+    Validates hub.verify_token against global settings or clinic configurations.
     """
     logger.info(f"Received webhook verification request: mode={hub_mode}")
-    if hub_mode == "subscribe" and hub_verify_token == settings.WHATSAPP_VERIFY_TOKEN:
-        logger.info("WhatsApp webhook verified successfully.")
-        return Response(content=hub_challenge, media_type="text/plain", status_code=status.HTTP_200_OK)
+    if hub_mode == "subscribe":
+        # 1. Check against global settings token
+        if hub_verify_token and hub_verify_token == settings.WHATSAPP_VERIFY_TOKEN:
+            logger.info("WhatsApp webhook verified successfully via settings token.")
+            return Response(content=hub_challenge, media_type="text/plain", status_code=status.HTTP_200_OK)
+
+        # 2. Check against clinic database custom tokens
+        if hub_verify_token:
+            try:
+                async with AsyncSessionLocal() as session:
+                    if is_postgres():
+                        stmt = select(Tenant.schema_name).where(Tenant.is_active == True)
+                        res = await session.execute(stmt)
+                        schemas = [r[0] for r in res.fetchall() if r[0]]
+                        for sch in schemas:
+                            await session.execute(text(f'SET search_path TO "{sch}", public;'))
+                            c_res = await session.execute(
+                                select(Clinic).where(Clinic.whatsapp_verify_token == hub_verify_token)
+                            )
+                            if c_res.scalar_one_or_none():
+                                logger.info(f"WhatsApp webhook verified successfully via tenant schema '{sch}'.")
+                                return Response(content=hub_challenge, media_type="text/plain", status_code=status.HTTP_200_OK)
+                    else:
+                        c_res = await session.execute(
+                            select(Clinic).where(Clinic.whatsapp_verify_token == hub_verify_token)
+                        )
+                        if c_res.scalar_one_or_none():
+                            logger.info("WhatsApp webhook verified successfully via clinic table.")
+                            return Response(content=hub_challenge, media_type="text/plain", status_code=status.HTTP_200_OK)
+            except Exception as e:
+                logger.warning(f"Error checking clinic-specific verify tokens: {e}")
 
     logger.warning("Webhook verification failed: Invalid verify token.")
     raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Verification token mismatch")
@@ -61,6 +93,9 @@ async def receive_whatsapp_event(request: Request, background_tasks: BackgroundT
     if not messages:
         return {"status": "ignored_non_message_event"}
 
+    metadata = value.get("metadata", {})
+    recipient_phone_id = metadata.get("phone_number_id")
+
     message = messages[0]
     message_id = message.get("id")
     from_number = message.get("from")
@@ -91,7 +126,8 @@ async def receive_whatsapp_event(request: Request, background_tasks: BackgroundT
             orchestration_pipeline.process_user_message,
             phone_number=from_number,
             message_text=text_content,
-            send_whatsapp_reply=True
+            send_whatsapp_reply=True,
+            recipient_phone_number_id=recipient_phone_id
         )
 
     return {"status": "queued"}
