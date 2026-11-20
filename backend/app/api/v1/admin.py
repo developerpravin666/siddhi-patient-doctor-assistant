@@ -603,6 +603,79 @@ async def update_clinic(
 
 
 # -----------------------------------------------------------------------------
+# Doctor Schema & Multi-Tenant Helpers
+# -----------------------------------------------------------------------------
+async def resolve_schema_for_clinic(clinic_id: str, db_session: AsyncSession) -> Optional[str]:
+    """
+    Finds the PostgreSQL schema for a given clinic_id.
+    """
+    if not clinic_id or not is_postgres():
+        return None
+    try:
+        t_res = await db_session.execute(text("SELECT id, schema_name FROM public.tenants WHERE status='ACTIVE';"))
+        tenants = t_res.fetchall()
+        for t_id, s_name in tenants:
+            if clinic_id == f"clinic_{t_id[:8]}" or clinic_id.startswith(f"clinic_{t_id[:8]}"):
+                return sanitize_schema_name(s_name)
+        for t_id, s_name in tenants:
+            safe = sanitize_schema_name(s_name)
+            try:
+                async with db_session.begin_nested():
+                    await db_session.execute(text(f'SET search_path TO "{safe}", public;'))
+                    c_res = await db_session.execute(select(Clinic.id).where(Clinic.id == clinic_id))
+                    if c_res.scalar_one_or_none():
+                        return safe
+            except Exception:
+                continue
+    except Exception:
+        pass
+    return None
+
+
+async def find_doctor_and_schema(
+    doctor_id: str,
+    db_session: AsyncSession,
+    preferred_schema: Optional[str] = None
+) -> Tuple[Optional[Doctor], str]:
+    """
+    Locates a doctor by ID across tenant schemas safely using PostgreSQL savepoints.
+    Leaves search_path set to the schema where the doctor was found.
+    """
+    schemas_to_try: List[str] = []
+    if preferred_schema and preferred_schema != "public":
+        schemas_to_try.append(sanitize_schema_name(preferred_schema))
+
+    if is_postgres():
+        try:
+            t_res = await db_session.execute(text("SELECT schema_name FROM public.tenants WHERE status='ACTIVE' ORDER BY created_at ASC;"))
+            for (s_name,) in t_res.fetchall():
+                safe = sanitize_schema_name(s_name)
+                if safe not in schemas_to_try:
+                    schemas_to_try.append(safe)
+        except Exception:
+            pass
+
+    if not schemas_to_try:
+        schemas_to_try = ["public"]
+
+    stmt = select(Doctor).where(Doctor.id == doctor_id)
+
+    for s_name in schemas_to_try:
+        if is_postgres():
+            await db_session.execute(text(f'SET search_path TO "{s_name}", public;'))
+        try:
+            async with db_session.begin_nested():
+                res = await db_session.execute(stmt)
+                doc = res.scalar_one_or_none()
+                if doc:
+                    return doc, s_name
+        except Exception:
+            continue
+
+    return None, schemas_to_try[0]
+
+
+# -----------------------------------------------------------------------------
 # Doctors Endpoints (Controlled by Granular Permissions: view, create, edit)
 # -----------------------------------------------------------------------------
 @router.get("/doctors", response_model=List[DoctorOut])
@@ -611,34 +684,44 @@ async def list_doctors(
     current_user: AdminUser = Depends(require_permission("doctors", "view")),
     db_session: AsyncSession = Depends(get_db)
 ):
+    doctors: List[Doctor] = []
     tenant_schema = await resolve_user_tenant_schema(current_user, db_session)
-    if not tenant_schema or tenant_schema == "public":
-        tenant_schema = "clinic_default"
+    if clinic_id:
+        c_schema = await resolve_schema_for_clinic(clinic_id, db_session)
+        if c_schema:
+            tenant_schema = c_schema
 
+    schemas_to_check = [tenant_schema] if tenant_schema and tenant_schema != "public" else []
     if is_postgres():
-        await db_session.execute(text(f'SET search_path TO "{tenant_schema}", public;'))
+        try:
+            t_res = await db_session.execute(text("SELECT schema_name FROM public.tenants WHERE status='ACTIVE' ORDER BY created_at ASC;"))
+            for (s_name,) in t_res.fetchall():
+                safe = sanitize_schema_name(s_name)
+                if safe not in schemas_to_check:
+                    schemas_to_check.append(safe)
+        except Exception:
+            pass
 
-    try:
-        stmt = select(Doctor)
-        if clinic_id:
-            stmt = stmt.where(Doctor.clinic_id == clinic_id)
-        result = await db_session.execute(stmt)
-        return result.scalars().all()
-    except Exception as e:
-        logger.warning(f"Error reading doctors in schema '{tenant_schema}': {e}. Falling back to clinic_default.")
+    if not schemas_to_check:
+        schemas_to_check = ["public"]
+
+    stmt = select(Doctor)
+    if clinic_id:
+        stmt = stmt.where(Doctor.clinic_id == clinic_id)
+
+    for s_name in schemas_to_check:
         if is_postgres():
-            try:
-                await db_session.rollback()
-                await db_session.execute(text('SET search_path TO "clinic_default", public;'))
-                stmt = select(Doctor)
-                if clinic_id:
-                    stmt = stmt.where(Doctor.clinic_id == clinic_id)
+            await db_session.execute(text(f'SET search_path TO "{s_name}", public;'))
+        try:
+            async with db_session.begin_nested():
                 res = await db_session.execute(stmt)
-                return res.scalars().all()
-            except Exception as e2:
-                logger.error(f"Fallback doctor query failed: {e2}")
-                return []
-        return []
+                for d in res.scalars().all():
+                    if not any(existing.id == d.id for existing in doctors):
+                        doctors.append(d)
+        except Exception:
+            continue
+
+    return doctors
 
 
 @router.get("/doctors/{doctor_id}", response_model=DoctorOut)
@@ -648,26 +731,7 @@ async def get_doctor(
     db_session: AsyncSession = Depends(get_db)
 ):
     tenant_schema = await resolve_user_tenant_schema(current_user, db_session)
-    if is_postgres():
-        await db_session.execute(text(f'SET search_path TO "{tenant_schema}", public;'))
-
-    stmt = select(Doctor).where(Doctor.id == doctor_id)
-    doctor = (await db_session.execute(stmt)).scalar_one_or_none()
-
-    if not doctor and is_postgres():
-        try:
-            t_res = await db_session.execute(text("SELECT schema_name FROM public.tenants WHERE status='ACTIVE';"))
-            for (s_name,) in t_res.fetchall():
-                safe_s = sanitize_schema_name(s_name)
-                if safe_s != tenant_schema:
-                    await db_session.execute(text(f'SET search_path TO "{safe_s}", public;'))
-                    doc_cand = (await db_session.execute(stmt)).scalar_one_or_none()
-                    if doc_cand:
-                        doctor = doc_cand
-                        break
-        except Exception:
-            pass
-
+    doctor, matched_schema = await find_doctor_and_schema(doctor_id, db_session, preferred_schema=tenant_schema)
     if not doctor:
         raise HTTPException(status_code=404, detail="Doctor not found")
     return doctor
@@ -679,14 +743,22 @@ async def create_doctor(
     current_user: AdminUser = Depends(require_permission("doctors", "create")),
     db_session: AsyncSession = Depends(get_db)
 ):
-    tenant_schema = await resolve_user_tenant_schema(current_user, db_session)
+    target_schema = None
+    if payload.clinic_id:
+        target_schema = await resolve_schema_for_clinic(payload.clinic_id, db_session)
+    if not target_schema:
+        target_schema = await resolve_user_tenant_schema(current_user, db_session)
+
+    safe_target = sanitize_schema_name(target_schema)
+    await provision_tenant_schema(safe_target)
+
     if is_postgres():
-        await db_session.execute(text(f'SET search_path TO "{tenant_schema}", public;'))
+        await db_session.execute(text(f'SET search_path TO "{safe_target}", public;'))
 
     clinic_id = payload.clinic_id or current_user.clinic_id
     if not clinic_id:
         c_res = await db_session.execute(select(Clinic.id).limit(1))
-        clinic_id = c_res.scalar_one_or_none() or f"clinic_{tenant_schema}"
+        clinic_id = c_res.scalar_one_or_none() or f"clinic_{safe_target}"
 
     specialty_val = payload.specialty
     if payload.specialties:
@@ -705,7 +777,10 @@ async def create_doctor(
         is_active=payload.is_active if payload.is_active is not None else True
     )
     db_session.add(doctor)
+    await db_session.flush()
     await db_session.commit()
+    if is_postgres():
+        await db_session.execute(text(f'SET search_path TO "{safe_target}", public;'))
     await db_session.refresh(doctor)
     return doctor
 
@@ -718,29 +793,13 @@ async def update_doctor(
     db_session: AsyncSession = Depends(get_db)
 ):
     tenant_schema = await resolve_user_tenant_schema(current_user, db_session)
-    if is_postgres():
-        await db_session.execute(text(f'SET search_path TO "{tenant_schema}", public;'))
-
-    stmt = select(Doctor).where(Doctor.id == doctor_id)
-    doctor = (await db_session.execute(stmt)).scalar_one_or_none()
-
-    if not doctor and is_postgres():
-        try:
-            t_res = await db_session.execute(text("SELECT schema_name FROM public.tenants WHERE status='ACTIVE';"))
-            for (s_name,) in t_res.fetchall():
-                safe_s = sanitize_schema_name(s_name)
-                if safe_s != tenant_schema:
-                    await db_session.execute(text(f'SET search_path TO "{safe_s}", public;'))
-                    doc_cand = (await db_session.execute(stmt)).scalar_one_or_none()
-                    if doc_cand:
-                        doctor = doc_cand
-                        tenant_schema = safe_s
-                        break
-        except Exception:
-            pass
+    doctor, matched_schema = await find_doctor_and_schema(doctor_id, db_session, preferred_schema=tenant_schema)
 
     if not doctor:
         raise HTTPException(status_code=404, detail="Doctor not found")
+
+    if is_postgres():
+        await db_session.execute(text(f'SET search_path TO "{matched_schema}", public;'))
 
     if payload.name is not None:
         doctor.name = payload.name
@@ -759,7 +818,10 @@ async def update_doctor(
     if payload.is_active is not None:
         doctor.is_active = payload.is_active
 
+    await db_session.flush()
     await db_session.commit()
+    if is_postgres():
+        await db_session.execute(text(f'SET search_path TO "{matched_schema}", public;'))
     await db_session.refresh(doctor)
     return doctor
 
@@ -772,32 +834,19 @@ async def toggle_doctor_status(
     db_session: AsyncSession = Depends(get_db)
 ):
     tenant_schema = await resolve_user_tenant_schema(current_user, db_session)
-    if is_postgres():
-        await db_session.execute(text(f'SET search_path TO "{tenant_schema}", public;'))
-
-    stmt = select(Doctor).where(Doctor.id == doctor_id)
-    doctor = (await db_session.execute(stmt)).scalar_one_or_none()
-
-    if not doctor and is_postgres():
-        try:
-            t_res = await db_session.execute(text("SELECT schema_name FROM public.tenants WHERE status='ACTIVE';"))
-            for (s_name,) in t_res.fetchall():
-                safe_s = sanitize_schema_name(s_name)
-                if safe_s != tenant_schema:
-                    await db_session.execute(text(f'SET search_path TO "{safe_s}", public;'))
-                    doc_cand = (await db_session.execute(stmt)).scalar_one_or_none()
-                    if doc_cand:
-                        doctor = doc_cand
-                        tenant_schema = safe_s
-                        break
-        except Exception:
-            pass
+    doctor, matched_schema = await find_doctor_and_schema(doctor_id, db_session, preferred_schema=tenant_schema)
 
     if not doctor:
         raise HTTPException(status_code=404, detail="Doctor not found")
 
+    if is_postgres():
+        await db_session.execute(text(f'SET search_path TO "{matched_schema}", public;'))
+
     doctor.is_active = payload.is_active
+    await db_session.flush()
     await db_session.commit()
+    if is_postgres():
+        await db_session.execute(text(f'SET search_path TO "{matched_schema}", public;'))
     await db_session.refresh(doctor)
     return doctor
 
@@ -809,29 +858,13 @@ async def delete_doctor(
     db_session: AsyncSession = Depends(get_db)
 ):
     tenant_schema = await resolve_user_tenant_schema(current_user, db_session)
-    if is_postgres():
-        await db_session.execute(text(f'SET search_path TO "{tenant_schema}", public;'))
-
-    stmt = select(Doctor).where(Doctor.id == doctor_id)
-    doctor = (await db_session.execute(stmt)).scalar_one_or_none()
-
-    if not doctor and is_postgres():
-        try:
-            t_res = await db_session.execute(text("SELECT schema_name FROM public.tenants WHERE status='ACTIVE';"))
-            for (s_name,) in t_res.fetchall():
-                safe_s = sanitize_schema_name(s_name)
-                if safe_s != tenant_schema:
-                    await db_session.execute(text(f'SET search_path TO "{safe_s}", public;'))
-                    doc_cand = (await db_session.execute(stmt)).scalar_one_or_none()
-                    if doc_cand:
-                        doctor = doc_cand
-                        tenant_schema = safe_s
-                        break
-        except Exception:
-            pass
+    doctor, matched_schema = await find_doctor_and_schema(doctor_id, db_session, preferred_schema=tenant_schema)
 
     if not doctor:
         raise HTTPException(status_code=404, detail="Doctor not found")
+
+    if is_postgres():
+        await db_session.execute(text(f'SET search_path TO "{matched_schema}", public;'))
 
     await db_session.delete(doctor)
     await db_session.commit()

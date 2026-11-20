@@ -315,28 +315,82 @@ async def init_db():
                         created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
                         updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
                     );
+
+                    CREATE TABLE IF NOT EXISTS public.doctors (
+                        id VARCHAR(36) PRIMARY KEY,
+                        clinic_id VARCHAR(36) NOT NULL,
+                        name VARCHAR(100) NOT NULL,
+                        specialty TEXT NOT NULL,
+                        available_days VARCHAR(100) NOT NULL,
+                        morning_slots TEXT,
+                        evening_slots TEXT,
+                        slot_duration_minutes INTEGER DEFAULT 30,
+                        is_active BOOLEAN DEFAULT TRUE,
+                        created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+                        updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+                    );
+
+                    CREATE TABLE IF NOT EXISTS public.patients (
+                        id VARCHAR(36) PRIMARY KEY,
+                        tenant_id VARCHAR(36),
+                        full_name VARCHAR(120) NOT NULL,
+                        mobile_number VARCHAR(20) NOT NULL,
+                        email VARCHAR(100),
+                        gender VARCHAR(20),
+                        age INTEGER,
+                        address VARCHAR(255),
+                        status VARCHAR(20) DEFAULT 'ACTIVE',
+                        is_active BOOLEAN DEFAULT TRUE,
+                        created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+                        updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+                    );
+
+                    CREATE TABLE IF NOT EXISTS public.appointments (
+                        id VARCHAR(36) PRIMARY KEY,
+                        tenant_id VARCHAR(36),
+                        clinic_id VARCHAR(36) NOT NULL,
+                        doctor_id VARCHAR(36),
+                        patient_id VARCHAR(36),
+                        patient_name VARCHAR(120) NOT NULL,
+                        mobile_number VARCHAR(20) NOT NULL,
+                        doctor_name VARCHAR(100) NOT NULL,
+                        clinic_name VARCHAR(150) NOT NULL,
+                        clinic_address VARCHAR(255),
+                        appointment_date VARCHAR(15) NOT NULL,
+                        time_slot VARCHAR(20) NOT NULL,
+                        appointment_datetime TIMESTAMP WITH TIME ZONE NOT NULL,
+                        status VARCHAR(25) DEFAULT 'CONFIRMED',
+                        reminder_sent BOOLEAN DEFAULT FALSE,
+                        reminder_sent_at TIMESTAMP WITH TIME ZONE,
+                        created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+                        updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+                    );
                 """
                 for p_stmt in public_ddl.split(";"):
                     p_cleaned = p_stmt.strip()
                     if p_cleaned:
                         await conn.execute(text(p_cleaned))
 
-                # Auto-migrate any missing columns on public tables
-                await conn.execute(text("ALTER TABLE public.tenants ADD COLUMN IF NOT EXISTS schema_name VARCHAR(63);"))
-                await conn.execute(text("ALTER TABLE public.tenants ALTER COLUMN schema_name DROP DEFAULT;"))
-                await conn.execute(text("ALTER TABLE public.tenants ADD COLUMN IF NOT EXISTS owner_name VARCHAR(100);"))
-                await conn.execute(text("ALTER TABLE public.tenants ADD COLUMN IF NOT EXISTS owner_phone VARCHAR(30);"))
-                await conn.execute(text("ALTER TABLE public.tenants ADD COLUMN IF NOT EXISTS owner_email VARCHAR(100);"))
-                await conn.execute(text("ALTER TABLE public.admin_users ADD COLUMN IF NOT EXISTS permissions JSON;"))
-                await conn.execute(text("ALTER TABLE public.admin_users ALTER COLUMN role DROP DEFAULT;"))
-
-                for col_m in [
+                # Auto-migrate any missing columns on public tables safely using savepoints
+                public_migrations = [
+                    "ALTER TABLE public.tenants ADD COLUMN IF NOT EXISTS schema_name VARCHAR(63);",
+                    "ALTER TABLE public.tenants ALTER COLUMN schema_name DROP DEFAULT;",
+                    "ALTER TABLE public.tenants ADD COLUMN IF NOT EXISTS owner_name VARCHAR(100);",
+                    "ALTER TABLE public.tenants ADD COLUMN IF NOT EXISTS owner_phone VARCHAR(30);",
+                    "ALTER TABLE public.tenants ADD COLUMN IF NOT EXISTS owner_email VARCHAR(100);",
+                    "ALTER TABLE public.admin_users ADD COLUMN IF NOT EXISTS permissions JSON;",
+                    "ALTER TABLE public.admin_users ALTER COLUMN role DROP DEFAULT;",
                     "ALTER TABLE public.clinics ADD COLUMN IF NOT EXISTS whatsapp_business_account_id VARCHAR(50);",
                     "ALTER TABLE public.clinics ADD COLUMN IF NOT EXISTS whatsapp_access_token TEXT;",
                     "ALTER TABLE public.clinics ADD COLUMN IF NOT EXISTS whatsapp_verify_token VARCHAR(100);",
                     "ALTER TABLE public.clinics ADD COLUMN IF NOT EXISTS bot_config JSON;",
-                ]:
-                    await conn.execute(text(col_m))
+                ]
+                for p_mig in public_migrations:
+                    try:
+                        async with conn.begin_nested():
+                            await conn.execute(text(p_mig))
+                    except Exception:
+                        pass
 
                 # Auto-migrate all active tenant schemas to ensure TEXT slots and specializations
                 try:
@@ -389,7 +443,7 @@ async def init_db():
                         await conn.execute(text('SET search_path TO public;'))
                         public_tables = [
                             Base.metadata.tables[t]
-                            for t in ["tenants", "admin_users"]
+                            for t in ["tenants", "admin_users", "specializations", "clinics", "doctors", "patients", "appointments"]
                             if t in Base.metadata.tables
                         ]
                         if public_tables:

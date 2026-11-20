@@ -1,13 +1,13 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate, useParams, Link } from 'react-router-dom';
-import { 
-  Users, 
-  ArrowLeft, 
-  User, 
-  Phone, 
-  Mail, 
-  MapPin, 
-  AlertCircle, 
+import {
+  Users,
+  ArrowLeft,
+  User,
+  Phone,
+  Mail,
+  MapPin,
+  AlertCircle,
   Save
 } from 'lucide-react';
 import { z } from 'zod';
@@ -203,12 +203,11 @@ export const PatientForm: React.FC = () => {
                 <User className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
                 <input
                   type="text"
-                  placeholder="e.g. Anjali Verma"
+                  placeholder="e.g. Test Patient"
                   value={formData.full_name}
                   onChange={(e) => setFormData({ ...formData, full_name: e.target.value })}
-                  className={`w-full pl-10 pr-4 py-2.5 rounded-xl border ${
-                    formErrors.full_name ? 'border-rose-400 bg-rose-50' : 'border-slate-300'
-                  } text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500`}
+                  className={`w-full pl-10 pr-4 py-2.5 rounded-xl border ${formErrors.full_name ? 'border-rose-400 bg-rose-50' : 'border-slate-300'
+                    } text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500`}
                 />
               </div>
               {formErrors.full_name && (
@@ -227,9 +226,8 @@ export const PatientForm: React.FC = () => {
                   placeholder="e.g. 9876543210"
                   value={formData.mobile_number}
                   onChange={(e) => setFormData({ ...formData, mobile_number: e.target.value })}
-                  className={`w-full pl-10 pr-4 py-2.5 rounded-xl border ${
-                    formErrors.mobile_number ? 'border-rose-400 bg-rose-50' : 'border-slate-300'
-                  } text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500`}
+                  className={`w-full pl-10 pr-4 py-2.5 rounded-xl border ${formErrors.mobile_number ? 'border-rose-400 bg-rose-50' : 'border-slate-300'
+                    } text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500`}
                 />
               </div>
               {formErrors.mobile_number && (
@@ -245,12 +243,11 @@ export const PatientForm: React.FC = () => {
                 <Mail className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
                 <input
                   type="email"
-                  placeholder="e.g. anjali@example.com"
+                  placeholder="e.g. test@gmail.com"
                   value={formData.email}
                   onChange={(e) => setFormData({ ...formData, email: e.target.value })}
-                  className={`w-full pl-10 pr-4 py-2.5 rounded-xl border ${
-                    formErrors.email ? 'border-rose-400 bg-rose-50' : 'border-slate-300'
-                  } text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500`}
+                  className={`w-full pl-10 pr-4 py-2.5 rounded-xl border ${formErrors.email ? 'border-rose-400 bg-rose-50' : 'border-slate-300'
+                    } text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500`}
                 />
               </div>
               {formErrors.email && (
@@ -286,9 +283,8 @@ export const PatientForm: React.FC = () => {
                   placeholder="Years"
                   value={formData.age}
                   onChange={(e) => setFormData({ ...formData, age: e.target.value })}
-                  className={`w-full px-3.5 py-2.5 rounded-xl border ${
-                    formErrors.age ? 'border-rose-400 bg-rose-50' : 'border-slate-300'
-                  } text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500`}
+                  className={`w-full px-3.5 py-2.5 rounded-xl border ${formErrors.age ? 'border-rose-400 bg-rose-50' : 'border-slate-300'
+                    } text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500`}
                 />
                 {formErrors.age && (
                   <p className="text-xs text-rose-600 mt-1 font-medium">{formErrors.age}</p>

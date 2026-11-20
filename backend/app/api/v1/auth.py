@@ -12,7 +12,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordBearer
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
-from app.core.database import get_db
+from app.core.database import get_db, sanitize_schema_name
 from app.core.security import verify_password, create_access_token, decode_access_token
 from app.models.domain import AdminUser, Tenant, get_default_permissions
 from app.models.schemas import LoginRequest, TokenResponse, AdminUserOut
@@ -142,15 +142,21 @@ async def resolve_user_tenant_schema(user: AdminUser, db_session: AsyncSession) 
         stmt = select(Tenant).where(Tenant.id == user.tenant_id)
         tenant = (await db_session.execute(stmt)).scalar_one_or_none()
         if tenant and getattr(tenant, "schema_name", None):
-            return tenant.schema_name
+            return sanitize_schema_name(tenant.schema_name)
 
     stmt = select(Tenant.schema_name).where(Tenant.status == "ACTIVE").limit(1)
     res = await db_session.execute(stmt)
     active_schema = res.scalar_one_or_none()
     if active_schema:
-        return active_schema
+        return sanitize_schema_name(active_schema)
 
-    return "clinic_default"
+    # Next fallback: any existing tenant in public.tenants
+    any_tenant = await db_session.execute(select(Tenant.schema_name).limit(1))
+    any_schema = any_tenant.scalar_one_or_none()
+    if any_schema:
+        return sanitize_schema_name(any_schema)
+
+    return "public"
 
 
 @router.post("/login", response_model=TokenResponse)
