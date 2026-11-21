@@ -19,6 +19,7 @@ import { WhatsAppConfig, Doctor, AdminUser, UserRole, AppContextType } from '../
 import { getWhatsAppConfig, updateWhatsAppConfig, testWhatsAppConnection, getDoctors } from '../api/client';
 import { whatsappConfigSchema, validateForm } from '../utils/validation';
 import { SearchableSelect } from '../components/SearchableSelect';
+import { getWebhookCallbackUrl } from '../config';
 
 interface WhatsAppConfigProps {
   doctors?: Doctor[];
@@ -62,9 +63,7 @@ export const WhatsAppConfigPage: React.FC<WhatsAppConfigProps> = (props) => {
 
   const canEdit = userRole === 'SUPER_ADMIN' || userRole === 'CLINIC_ADMIN';
 
-  const webhookCallbackUrl = typeof window !== 'undefined'
-    ? `${window.location.origin}/api/v1/webhook`
-    : 'https://<your-domain>/api/v1/webhook';
+  const webhookCallbackUrl = getWebhookCallbackUrl();
 
   const handleCopy = (text: string, fieldName: string) => {
     navigator.clipboard.writeText(text);

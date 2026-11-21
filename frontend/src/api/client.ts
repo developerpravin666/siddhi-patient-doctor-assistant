@@ -1,7 +1,8 @@
 import axios from 'axios';
 import { Appointment, Doctor, Clinic, Patient, DashboardStats, AdminUser, Tenant, WhatsAppConfig, Specialization } from '../types';
+import { API_BASE_URL, getApiBaseUrl } from '../config';
 
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000';
+export { API_BASE_URL, getApiBaseUrl };
 
 const api = axios.create({
   baseURL: API_BASE_URL,
@@ -10,8 +11,12 @@ const api = axios.create({
   },
 });
 
-// Attach Authorization Bearer token to all outgoing requests
+// Attach Authorization Bearer token and ensure dynamic base URL
 api.interceptors.request.use((config) => {
+  const currentBase = getApiBaseUrl();
+  if (currentBase) {
+    config.baseURL = currentBase;
+  }
   const token = localStorage.getItem('siddhi_auth_token');
   if (token && config.headers) {
     config.headers.Authorization = `Bearer ${token}`;

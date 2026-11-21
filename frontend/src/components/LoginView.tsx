@@ -42,7 +42,7 @@ export const LoginView: React.FC<LoginViewProps> = ({ onLoginSuccess }) => {
       navigate(from || defaultTarget, { replace: true });
     } catch (err: any) {
       if (err.message === 'Network Error' || !err.response) {
-        setErrorMessage('Cannot connect to backend API server at http://localhost:8000. Please ensure the backend is running (python run.py).');
+        setErrorMessage('Cannot connect to backend API server. Please ensure the backend is running (python run.py).');
       } else {
         setErrorMessage(err.response?.data?.detail || 'Invalid username or password');
       }
