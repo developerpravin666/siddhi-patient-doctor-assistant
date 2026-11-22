@@ -12,7 +12,9 @@ from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
+import time
 from app.core.config import settings
+from app.core.logging_config import setup_logging
 from app.core.database import init_db, check_db_health
 from app.services.database_service import db
 from app.services.reminder_service import check_and_send_1hr_reminders
@@ -21,10 +23,8 @@ from app.api.v1.auth import router as auth_router
 from app.api.v1.appointments import router as appointments_router
 from app.api.v1.admin import router as admin_router
 
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s [%(levelname)s] %(name)s: %(message)s"
-)
+# Initialize application-wide daily text file logging
+setup_logging(log_level=settings.LOG_LEVEL, retention_days=settings.LOG_RETENTION_DAYS)
 logger = logging.getLogger("main")
 
 scheduler = AsyncIOScheduler()

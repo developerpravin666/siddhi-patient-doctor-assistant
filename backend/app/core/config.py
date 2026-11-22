@@ -24,7 +24,7 @@ class Settings(BaseSettings):
         "http://127.0.0.1:3000",
         "http://127.0.0.1:5173",
         "http://127.0.0.1:8000",
-        "https://tested-shoe-listings-proceeding.trycloudflare.com"
+        "https://uncertainty-brighton-dryer-bay.trycloudflare.com"
     ]
 
     @field_validator("CORS_ORIGINS", mode="before")
@@ -41,7 +41,7 @@ class Settings(BaseSettings):
                     pass
             parts = [item.strip() for item in v.split(",") if item.strip()]
             return parts if parts else ["http://localhost:5173", "http://localhost:8000",
-                                        "https://tested-shoe-listings-proceeding.trycloudflare.com"]
+                                        "https://listed-impacts-extent-sen.trycloudflare.com"]
         return list(v)
 
     def get_cors_origins(self) -> List[str]:
@@ -109,6 +109,11 @@ class Settings(BaseSettings):
     JWT_SECRET: str = "super_secret_jwt_key_change_in_production_min_32_chars"
     JWT_ALGORITHM: str = "HS256"
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 1440
+
+    # Logging Configuration
+    LOG_LEVEL: str = "INFO"
+    LOG_DIR: str = "logs"
+    LOG_RETENTION_DAYS: int = 30
 
     # Clinic Default Metadata
     DEFAULT_DOCTOR_NAME: str = "Dr. Siddhi Patel"
