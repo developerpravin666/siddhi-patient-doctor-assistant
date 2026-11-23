@@ -394,7 +394,7 @@ WHERE role = 'RECEPTIONIST';
 
 ## 7. Summary of Completed Improvements
 
-1. **Removed Domain Defaults**: Hardcoded values (`Dr. Siddhi Patel`, `Dr. Siddhi Patel's Clinic`, `+91 98765 00000`, `General Physician`, `Mon,Tue,Wed,Thu,Fri,Sat`, etc.) have been completely removed from SQLAlchemy models, Pydantic schemas, and PostgreSQL DDL statements.
+1. **Removed Domain Defaults**: Hardcoded values (`Dr. Siddhi Patel`, `Dr. Siddhi Patidar's Clinic`, `+91 98765 00000`, `General Physician`, `Mon,Tue,Wed,Thu,Fri,Sat`, etc.) have been completely removed from SQLAlchemy models, Pydantic schemas, and PostgreSQL DDL statements.
 2. **Dynamic Runtime Resolution**: All appointments dynamically query doctor and clinic profiles, capturing snapshot fields accurately at booking time.
 3. **Database Drop Migration**: Existing tables in `clinic_default` and `public` were automatically updated to drop any lingering default constraints.
 4. **Complete Multi-Tenant Documentation**: This comprehensive guide outlines the entity relationships, lifecycle sequences, schema isolation patterns, and verification queries.

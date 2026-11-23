@@ -58,7 +58,7 @@
 ### Step 1: Greeting & Name
 - **Trigger:** Any initial message or booking intent (e.g., *"Hi"*, *"I need an appointment"*, *"Can I see a doctor?"*).
 - **Receptionist Response:**
-  > "Hello! 👋 Welcome to *Dr. Siddhi Patel's Clinic*.\n\nI would be happy to help you schedule an appointment with Dr. Patel.\n\nMay I please have your *full name*?"
+  > "Hello! 👋 Welcome to *Dr. Siddhi Patidar's Clinic*.\n\nI would be happy to help you schedule an appointment with Dr. Patel.\n\nMay I please have your *full name*?"
 
 ### Step 2: 10-Digit Mobile Number
 - **Trigger:** Patient provides their name.
@@ -116,7 +116,7 @@
 ### 4.2 Out-of-Scope Redirect
 - **Trigger:** Questions about topics unrelated to clinic bookings, directions, or timings (e.g., politics, coding, casual chat, complex medical science).
 - **Response:**
-  > "I am here specifically to assist you with booking and managing appointments at *Dr. Siddhi Patel's Clinic*.\n\nWould you like to check available appointment slots?"
+  > "I am here specifically to assist you with booking and managing appointments at *Dr. Siddhi Patidar's Clinic*.\n\nWould you like to check available appointment slots?"
 
 ### 4.3 Clinic Timings & Location Inquiries
 - **Response:**
@@ -136,7 +136,7 @@
 ### Scenario A: Happy Path Booking
 ```
 Patient: Hi there, I need to see Dr. Siddhi.
-Bot:     Hello! 👋 Welcome to Dr. Siddhi Patel's Clinic. I would be happy to help you schedule an appointment. May I please have your full name?
+Bot:     Hello! 👋 Welcome to Dr. Siddhi Patidar's Clinic. I would be happy to help you schedule an appointment. May I please have your full name?
 Patient: Sneha Kulkarni
 Bot:     Thank you, Sneha! Could you please share your 10-digit mobile number so we can confirm your booking?
 Patient: 9009368666

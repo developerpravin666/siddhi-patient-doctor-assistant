@@ -8,8 +8,8 @@ interface NavbarProps {
   onLogout: () => void;
 }
 
-export const Navbar: React.FC<NavbarProps> = ({ 
-  clinicName = "Dr. Siddhi Patel's Clinic",
+export const Navbar: React.FC<NavbarProps> = ({
+  clinicName = "Dr. Siddhi Patidar's Clinic",
   currentUser,
   onLogout
 }) => {

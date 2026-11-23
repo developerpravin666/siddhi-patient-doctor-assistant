@@ -19,7 +19,7 @@ export const WhatsAppSimulator: React.FC = () => {
     {
       id: 'm1',
       sender: 'bot',
-      text: "Hello! 👋 Welcome to *Dr. Siddhi Patel's Clinic*.\n\nI would be happy to help you schedule an appointment with Dr. Patel.\n\nMay I please have your *full name*?",
+      text: "Hello! 👋 Welcome to *Dr. Siddhi Patidar's Clinic*.\n\nI would be happy to help you schedule an appointment with Dr. Patel.\n\nMay I please have your *full name*?",
       timestamp: '10:00 AM'
     }
   ]);
@@ -96,7 +96,7 @@ export const WhatsAppSimulator: React.FC = () => {
         {
           id: `m-${Date.now()}`,
           sender: 'bot',
-          text: "Hello! 👋 Welcome to *Dr. Siddhi Patel's Clinic*.\n\nI would be happy to help you schedule an appointment with Dr. Patel.\n\nMay I please have your *full name*?",
+          text: "Hello! 👋 Welcome to *Dr. Siddhi Patidar's Clinic*.\n\nI would be happy to help you schedule an appointment with Dr. Patel.\n\nMay I please have your *full name*?",
           timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
         }
       ]);
@@ -153,7 +153,7 @@ export const WhatsAppSimulator: React.FC = () => {
                   <span className="w-2.5 h-2.5 bg-whatsapp-light rounded-full absolute bottom-0 right-0 border-2 border-whatsapp-teal"></span>
                 </div>
                 <div>
-                  <h4 className="font-bold text-sm leading-tight">Dr. Siddhi Patel's Clinic</h4>
+                  <h4 className="font-bold text-sm leading-tight">Dr. Siddhi Patidar's Clinic</h4>
                   <p className="text-[11px] text-emerald-200">Official WhatsApp Medical Assistant</p>
                 </div>
               </div>
@@ -191,8 +191,8 @@ export const WhatsAppSimulator: React.FC = () => {
 
                     <div
                       className={`max-w-[85%] rounded-2xl px-3.5 py-2.5 shadow-sm text-xs text-slate-800 leading-relaxed ${isUser
-                          ? 'bg-[#DCF8C6] rounded-tr-none'
-                          : 'bg-white rounded-tl-none border border-slate-100'
+                        ? 'bg-[#DCF8C6] rounded-tr-none'
+                        : 'bg-white rounded-tl-none border border-slate-100'
                         }`}
                     >
                       <div className="whitespace-pre-wrap">{formatWhatsAppText(m.text)}</div>

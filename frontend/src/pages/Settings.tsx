@@ -46,7 +46,7 @@ export const SettingsPage: React.FC<SettingsProps> = (props) => {
             <input
               type="text"
               readOnly
-              value={clinic?.name || "Dr. Siddhi Patel's Clinic"}
+              value={clinic?.name || "Dr. Siddhi Patidar's Clinic"}
               className="w-full px-3.5 py-2 rounded-xl bg-slate-50 border border-slate-200 text-slate-800 font-medium"
             />
           </div>
@@ -130,7 +130,7 @@ export const SettingsPage: React.FC<SettingsProps> = (props) => {
             </span>
           </div>
           <p className="text-slate-600 font-mono text-[11px] whitespace-pre-wrap bg-white p-3 rounded-lg border border-slate-200">
-{`Hello {{1}},
+            {`Hello {{1}},
 
 This is a friendly reminder that your appointment with {{2}} is scheduled in 1 hour at {{3}}.
 
