@@ -19,6 +19,8 @@ import { PatientForm } from './pages/PatientForm';
 import { SpecializationsManagement } from './pages/SpecializationsManagement';
 import { TenantForm } from './pages/TenantForm';
 import { WebhookEvents } from './pages/WebhookEvents';
+import { UnauthorizedPage } from './pages/UnauthorizedPage';
+import { NotFoundPage } from './pages/NotFoundPage';
 import { getStoredUser } from './api/client';
 import { ConfirmationProvider } from './context/ConfirmationContext';
 
@@ -229,7 +231,7 @@ export const App: React.FC = () => {
           <Route
             path="whatsapp-config"
             element={
-              <ProtectedRoute allowedRoles={['SUPER_ADMIN', 'CLINIC_ADMIN']}>
+              <ProtectedRoute allowedRoles={['SUPER_ADMIN']}>
                 <WhatsAppConfigPage />
               </ProtectedRoute>
             }
@@ -254,8 +256,11 @@ export const App: React.FC = () => {
           />
         </Route>
 
-        {/* Fallback Catch-All Route */}
-        <Route path="*" element={<Navigate to="/" replace />} />
+        {/* Dedicated 401 Unauthorized / Access Denied Route */}
+        <Route path="/unauthorized" element={<UnauthorizedPage />} />
+
+        {/* Dedicated 404 Not Found Catch-All Route */}
+        <Route path="*" element={<NotFoundPage />} />
       </Routes>
     </ConfirmationProvider>
   </BrowserRouter>

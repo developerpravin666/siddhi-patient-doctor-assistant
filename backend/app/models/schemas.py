@@ -37,6 +37,11 @@ class AdminUserUpdate(BaseModel):
     password: Optional[str] = None
 
 
+class UserProfileUpdate(BaseModel):
+    full_name: Optional[str] = None
+    password: Optional[str] = None
+
+
 class AdminUserOut(BaseModel):
     id: str
     username: str

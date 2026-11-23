@@ -9,17 +9,29 @@ import {
   CheckCheck,
   Zap
 } from 'lucide-react';
-import { simulateWhatsAppMessage, resetWhatsAppSession } from '../api/client';
+import { simulateWhatsAppMessage, resetWhatsAppSession, getClinics, getActiveTenantName } from '../api/client';
 import { ChatMessage } from '../types';
 
 export const WhatsAppSimulator: React.FC = () => {
   const [phoneNumber] = useState('919009368666');
   const [inputText, setInputText] = useState('');
+  const [clinicName, setClinicName] = useState<string>(() => getActiveTenantName() || 'Medical Clinic');
+
+  useEffect(() => {
+    getClinics()
+      .then((data) => {
+        if (data && data.length > 0 && data[0].name) {
+          setClinicName(data[0].name);
+        }
+      })
+      .catch(() => {});
+  }, []);
+
   const [messages, setMessages] = useState<ChatMessage[]>([
     {
       id: 'm1',
       sender: 'bot',
-      text: "Hello! 👋 Welcome to *Dr. Siddhi Patidar's Clinic*.\n\nI would be happy to help you schedule an appointment with Dr. Patel.\n\nMay I please have your *full name*?",
+      text: "Hello! 👋 Welcome to our Medical Clinic.\n\nHow can we assist you today?\n1️⃣ *Book Appointment*\n2️⃣ *Clinic Timings & Location*\n3️⃣ *Speak with Front Desk Staff*\n\n_Please reply with 1, 2, or 3._",
       timestamp: '10:00 AM'
     }
   ]);
@@ -96,7 +108,7 @@ export const WhatsAppSimulator: React.FC = () => {
         {
           id: `m-${Date.now()}`,
           sender: 'bot',
-          text: "Hello! 👋 Welcome to *Dr. Siddhi Patidar's Clinic*.\n\nI would be happy to help you schedule an appointment with Dr. Patel.\n\nMay I please have your *full name*?",
+          text: `Hello! 👋 Welcome to *${clinicName}*.\n\nHow can we assist you today?\n1️⃣ *Book Appointment*\n2️⃣ *Clinic Timings & Location*\n3️⃣ *Speak with Front Desk Staff*\n\n_Please reply with 1, 2, or 3._`,
           timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
         }
       ]);
@@ -148,12 +160,12 @@ export const WhatsAppSimulator: React.FC = () => {
               <div className="flex items-center space-x-3">
                 <div className="relative">
                   <div className="w-10 h-10 rounded-full bg-white/20 flex items-center justify-center font-bold text-sm">
-                    SP
+                    {clinicName.substring(0, 2).toUpperCase()}
                   </div>
                   <span className="w-2.5 h-2.5 bg-whatsapp-light rounded-full absolute bottom-0 right-0 border-2 border-whatsapp-teal"></span>
                 </div>
                 <div>
-                  <h4 className="font-bold text-sm leading-tight">Dr. Siddhi Patidar's Clinic</h4>
+                  <h4 className="font-bold text-sm leading-tight">{clinicName}</h4>
                   <p className="text-[11px] text-emerald-200">Official WhatsApp Medical Assistant</p>
                 </div>
               </div>

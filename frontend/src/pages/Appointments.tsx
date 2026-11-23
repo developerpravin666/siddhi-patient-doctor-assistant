@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useEffect, useCallback } from 'react';
+import React, { useState, useMemo, useEffect, useCallback, useRef } from 'react';
 import { 
   Calendar, 
   Plus, 
@@ -11,7 +11,8 @@ import {
   Edit3, 
   RefreshCw, 
   AlertCircle,
-  CalendarDays
+  CalendarDays,
+  Pause
 } from 'lucide-react';
 import { useOutletContext, useNavigate } from 'react-router-dom';
 import { Appointment, UserRole, AdminUser, AppContextType } from '../types';
@@ -94,6 +95,16 @@ export const Appointments: React.FC<AppointmentsProps> = (props) => {
   const [toastMessage, setToastMessage] = useState<{ text: string; type: 'success' | 'error' } | null>(null);
   const confirm = useConfirm();
 
+  // Auto-Refresh state (Requirements 5 & 6)
+  const [autoRefreshMinutes, setAutoRefreshMinutes] = useState<number>(() => {
+    const saved = localStorage.getItem('siddhi_appointments_auto_refresh');
+    return saved !== null ? parseInt(saved, 10) : 5;
+  });
+  const [isActionInProgress, setIsActionInProgress] = useState<boolean>(false);
+  const [isManualPaused, setIsManualPaused] = useState<boolean>(false);
+  const [lastRefreshedAt, setLastRefreshedAt] = useState<Date>(new Date());
+  const timerRef = useRef<any>(null);
+
   // Fetch appointments from backend with parameters
   const fetchAppointments = useCallback(async (overrides?: {
     fromDate?: string;
@@ -144,6 +155,32 @@ export const Appointments: React.FC<AppointmentsProps> = (props) => {
     }
   }, [gridMode, fromDate, toDate, statusFilter, searchTerm, sortKey, sortDir, page, pageSize]);
 
+  // Auto-refresh interval lifecycle (Requirements 5 & 6)
+  useEffect(() => {
+    if (timerRef.current) {
+      clearInterval(timerRef.current);
+      timerRef.current = null;
+    }
+
+    if (autoRefreshMinutes <= 0 || isActionInProgress || isManualPaused) {
+      return;
+    }
+
+    const intervalMs = autoRefreshMinutes * 60 * 1000;
+    timerRef.current = setInterval(() => {
+      if (document.hidden) return;
+      fetchAppointments();
+      setLastRefreshedAt(new Date());
+    }, intervalMs);
+
+    return () => {
+      if (timerRef.current) {
+        clearInterval(timerRef.current);
+        timerRef.current = null;
+      }
+    };
+  }, [autoRefreshMinutes, isActionInProgress, isManualPaused, fetchAppointments]);
+
   // Initial load on mount or when dates/status changes
   useEffect(() => {
     if (!props.appointments) {
@@ -152,6 +189,7 @@ export const Appointments: React.FC<AppointmentsProps> = (props) => {
   }, [fromDate, toDate, statusFilter, gridMode]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const handleRefresh = () => {
+    setLastRefreshedAt(new Date());
     if (props.onRefresh) {
       props.onRefresh();
     } else {
@@ -220,6 +258,7 @@ export const Appointments: React.FC<AppointmentsProps> = (props) => {
   };
 
   const handleStatusChange = async (id: string, newStatus: string, patientName?: string) => {
+    setIsActionInProgress(true); // Pause auto-refresh while action/dialog is active
     if (newStatus === 'CANCELLED') {
       const ok = await confirm({
         title: 'Cancel Patient Appointment',
@@ -229,7 +268,10 @@ export const Appointments: React.FC<AppointmentsProps> = (props) => {
         cancelText: 'Keep Appointment',
         variant: 'warning',
       });
-      if (!ok) return;
+      if (!ok) {
+        setIsActionInProgress(false); // Resume auto-refresh
+        return;
+      }
     }
     try {
       await updateAppointmentStatus(id, { status: newStatus });
@@ -237,6 +279,8 @@ export const Appointments: React.FC<AppointmentsProps> = (props) => {
       handleRefresh();
     } catch (err: any) {
       showToast(err.response?.data?.detail || 'Failed to update appointment status', 'error');
+    } finally {
+      setIsActionInProgress(false); // Restart auto-refresh
     }
   };
 
@@ -344,7 +388,10 @@ export const Appointments: React.FC<AppointmentsProps> = (props) => {
         <div className="flex items-center justify-end gap-1.5" onClick={(e) => e.stopPropagation()}>
           {canEdit && (
             <button
-              onClick={() => navigate(`/appointments/${appt.id}/edit`)}
+              onClick={() => {
+                setIsActionInProgress(true);
+                navigate(`/appointments/${appt.id}/edit`);
+              }}
               className="p-1.5 rounded-lg border border-slate-200 bg-white hover:bg-slate-50 text-slate-600 hover:text-indigo-600 transition"
               title="Edit Appointment"
             >
@@ -548,18 +595,71 @@ export const Appointments: React.FC<AppointmentsProps> = (props) => {
           </div>
         }
         actionButton={
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 flex-wrap">
+            {/* Auto-Refresh Dropdown & Interval Selector (Requirements 5 & 6) */}
+            <div className="flex items-center gap-1.5 bg-slate-50 border border-slate-200 rounded-xl px-2.5 py-1.5 text-xs">
+              <Clock className="w-3.5 h-3.5 text-slate-500" />
+              <span className="text-slate-500 font-medium hidden sm:inline">Auto-refresh:</span>
+              <select
+                value={autoRefreshMinutes}
+                onChange={(e) => {
+                  const val = Number(e.target.value);
+                  setAutoRefreshMinutes(val);
+                  localStorage.setItem('siddhi_appointments_auto_refresh', String(val));
+                }}
+                className="bg-transparent font-bold text-slate-700 focus:outline-none cursor-pointer"
+                title="Select auto-refresh interval for appointments queue"
+              >
+                <option value={0}>Off</option>
+                <option value={1}>1 min</option>
+                <option value={5}>5 mins</option>
+                <option value={10}>10 mins</option>
+                <option value={15}>15 mins</option>
+                <option value={30}>30 mins</option>
+              </select>
+
+              {autoRefreshMinutes > 0 && (
+                <>
+                  {isActionInProgress || isManualPaused ? (
+                    <button
+                      onClick={() => setIsManualPaused(false)}
+                      className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-bold bg-amber-100 text-amber-800 hover:bg-amber-200 transition"
+                      title="Auto-refresh paused. Click to resume."
+                    >
+                      <Pause className="w-2.5 h-2.5 text-amber-600" />
+                      <span>Paused</span>
+                    </button>
+                  ) : (
+                    <button
+                      onClick={() => setIsManualPaused(true)}
+                      className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-bold bg-emerald-100 text-emerald-800 hover:bg-emerald-200 transition"
+                      title={`Auto-refresh active (every ${autoRefreshMinutes}m). Click to pause.`}
+                    >
+                      <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span>
+                      <span>Live</span>
+                    </button>
+                  )}
+                </>
+              )}
+            </div>
+
+            {/* Manual Refresh Button */}
             <button
               onClick={handleRefresh}
               disabled={loading}
               className="p-2.5 rounded-xl border border-slate-200 text-slate-600 hover:bg-slate-50 transition disabled:opacity-50"
-              title="Refresh Appointments"
+              title={`Refresh Appointments (Last updated: ${lastRefreshedAt.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })})`}
             >
               <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin text-indigo-600' : ''}`} />
             </button>
+
+            {/* Book Appointment Button */}
             {canCreate && (
               <button
-                onClick={() => navigate('/appointments/new')}
+                onClick={() => {
+                  setIsActionInProgress(true);
+                  navigate('/appointments/new');
+                }}
                 className="px-4 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-sm transition shadow-sm flex items-center gap-2"
               >
                 <Plus className="w-4 h-4" /> Book Patient Appointment

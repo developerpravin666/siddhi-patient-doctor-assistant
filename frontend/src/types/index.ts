@@ -25,6 +25,7 @@ export interface Tenant {
   id: string;
   name: string;
   schema_name: string;
+  clinic_name?: string;
   owner_name?: string;
   owner_phone?: string;
   owner_email?: string;

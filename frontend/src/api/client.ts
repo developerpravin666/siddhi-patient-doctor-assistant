@@ -11,7 +11,7 @@ const api = axios.create({
   },
 });
 
-// Attach Authorization Bearer token and ensure dynamic base URL
+// Attach Authorization Bearer token, active tenant override (for Super Admin context switching), and dynamic base URL
 api.interceptors.request.use((config) => {
   const currentBase = getApiBaseUrl();
   if (currentBase) {
@@ -20,6 +20,15 @@ api.interceptors.request.use((config) => {
   const token = localStorage.getItem('siddhi_auth_token');
   if (token && config.headers) {
     config.headers.Authorization = `Bearer ${token}`;
+  }
+  // If Super Admin has selected a specific tenant clinic context, attach impersonation headers
+  const activeTenantId = localStorage.getItem('siddhi_active_tenant_id');
+  const activeTenantSchema = localStorage.getItem('siddhi_active_tenant_schema');
+  if (activeTenantId && config.headers) {
+    config.headers['X-Tenant-ID'] = activeTenantId;
+  }
+  if (activeTenantSchema && config.headers) {
+    config.headers['X-Tenant-Schema'] = activeTenantSchema;
   }
   return config;
 });
@@ -54,9 +63,48 @@ export const getMe = async (): Promise<AdminUser> => {
   return res.data;
 };
 
+export const updateMyProfileApi = async (data: { full_name?: string; password?: string }): Promise<AdminUser> => {
+  const res = await api.put('/api/v1/auth/profile', data);
+  if (res.data) {
+    const existing = getStoredUser();
+    if (existing) {
+      const updated = { ...existing, full_name: res.data.full_name };
+      localStorage.setItem('siddhi_user', JSON.stringify(updated));
+    }
+  }
+  return res.data;
+};
+
 export const logoutApi = () => {
   localStorage.removeItem('siddhi_auth_token');
   localStorage.removeItem('siddhi_user');
+  localStorage.removeItem('siddhi_active_tenant_id');
+  localStorage.removeItem('siddhi_active_tenant_schema');
+  localStorage.removeItem('siddhi_active_tenant_name');
+};
+
+export const getActiveTenantId = (): string | null => {
+  return localStorage.getItem('siddhi_active_tenant_id');
+};
+
+export const getActiveTenantSchema = (): string | null => {
+  return localStorage.getItem('siddhi_active_tenant_schema');
+};
+
+export const getActiveTenantName = (): string | null => {
+  return localStorage.getItem('siddhi_active_tenant_name');
+};
+
+export const setActiveTenant = (tenant: Tenant | null) => {
+  if (tenant) {
+    localStorage.setItem('siddhi_active_tenant_id', tenant.id);
+    localStorage.setItem('siddhi_active_tenant_schema', tenant.schema_name);
+    localStorage.setItem('siddhi_active_tenant_name', tenant.clinic_name || tenant.name);
+  } else {
+    localStorage.removeItem('siddhi_active_tenant_id');
+    localStorage.removeItem('siddhi_active_tenant_schema');
+    localStorage.removeItem('siddhi_active_tenant_name');
+  }
 };
 
 export const getStoredUser = (): AdminUser | null => {

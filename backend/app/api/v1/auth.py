@@ -10,12 +10,13 @@ import logging
 from typing import Optional, List, Callable
 from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordBearer
-from sqlalchemy import select
+from sqlalchemy import select, or_
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.database import get_db, sanitize_schema_name
-from app.core.security import verify_password, create_access_token, decode_access_token
+from app.core.tenant_context import get_tenant_override
+from app.core.security import verify_password, create_access_token, decode_access_token, get_password_hash
 from app.models.domain import AdminUser, Tenant, get_default_permissions
-from app.models.schemas import LoginRequest, TokenResponse, AdminUserOut
+from app.models.schemas import LoginRequest, TokenResponse, AdminUserOut, UserProfileUpdate
 
 router = APIRouter(prefix="/auth", tags=["Authentication"])
 logger = logging.getLogger("auth_api")
@@ -132,25 +133,49 @@ def require_permission(screen: str, action: str = "view") -> Callable:
     return permission_checker
 
 
-async def resolve_user_tenant_schema(user: AdminUser, db_session: AsyncSession) -> str:
+async def resolve_user_tenant_schema(
+    user: AdminUser,
+    db_session: AsyncSession,
+    override_tenant: Optional[str] = None
+) -> str:
     """
     Resolves the PostgreSQL schema name for the given user's clinic tenant.
-    For Clinic Admins and staff, resolves directly from their assigned tenant.
-    For Super Admins (Product Owner), resolves the first active tenant schema, or falls back to 'public'.
+    For Super Admins (Product Owner):
+      - If an override header (X-Tenant-ID / X-Tenant-Schema) is provided, resolves to that clinic's schema.
+      - Otherwise, resolves the first active tenant schema, or falls back to 'public'.
+    For Clinic Admins and Staff:
+      - Strictly locked to their assigned tenant schema.
     """
-    if user.tenant_id:
-        stmt = select(Tenant).where(Tenant.id == user.tenant_id)
-        tenant = (await db_session.execute(stmt)).scalar_one_or_none()
-        if tenant and getattr(tenant, "schema_name", None):
-            return sanitize_schema_name(tenant.schema_name)
+    # 1. Super Admin Context Switching / Impersonation
+    if user.role == "SUPER_ADMIN":
+        target = override_tenant or get_tenant_override()
+        if target:
+            clean_target = str(target).strip()
+            stmt = select(Tenant.schema_name).where(
+                or_(Tenant.id == clean_target, Tenant.schema_name == clean_target)
+            )
+            res = await db_session.execute(stmt)
+            target_schema = res.scalar_one_or_none()
+            if target_schema:
+                return sanitize_schema_name(target_schema)
+            logger.warning(f"Super Admin requested unknown or invalid tenant override: '{clean_target}'")
 
+    # 2. Clinic Admin / Staff assigned tenant
+    if user.tenant_id:
+        stmt = select(Tenant.schema_name).where(Tenant.id == user.tenant_id)
+        res = await db_session.execute(stmt)
+        assigned_schema = res.scalar_one_or_none()
+        if assigned_schema:
+            return sanitize_schema_name(assigned_schema)
+
+    # 3. Fallback: First Active Tenant
     stmt = select(Tenant.schema_name).where(Tenant.status == "ACTIVE").limit(1)
     res = await db_session.execute(stmt)
     active_schema = res.scalar_one_or_none()
     if active_schema:
         return sanitize_schema_name(active_schema)
 
-    # Next fallback: any existing tenant in public.tenants
+    # 4. Next fallback: any existing tenant in public.tenants
     any_tenant = await db_session.execute(select(Tenant.schema_name).limit(1))
     any_schema = any_tenant.scalar_one_or_none()
     if any_schema:
@@ -214,6 +239,55 @@ async def login(credentials: LoginRequest, db_session: AsyncSession = Depends(ge
 
 @router.get("/me", response_model=AdminUserOut)
 async def get_me(current_user: AdminUser = Depends(get_current_admin)):
+    return current_user
+
+
+@router.put("/profile", response_model=AdminUserOut)
+async def update_my_profile(
+    payload: UserProfileUpdate,
+    current_user: AdminUser = Depends(get_current_admin),
+    db_session: AsyncSession = Depends(get_db)
+):
+    """
+    Allows any authenticated user (e.g. Clinic Admin / Doctor) to update their
+    own personal profile (full name, password).
+    """
+    from sqlalchemy import text
+
+    if payload.full_name is not None and payload.full_name.strip():
+        current_user.full_name = payload.full_name.strip()
+        await db_session.execute(
+            text("UPDATE public.admin_users SET full_name = :fn, updated_at = CURRENT_TIMESTAMP WHERE id = :id"),
+            {"fn": current_user.full_name, "id": current_user.id}
+        )
+
+    if payload.password is not None and payload.password.strip():
+        new_hash = get_password_hash(payload.password.strip())
+        current_user.hashed_password = new_hash
+        await db_session.execute(
+            text("UPDATE public.admin_users SET hashed_password = :hp, updated_at = CURRENT_TIMESTAMP WHERE id = :id"),
+            {"hp": new_hash, "id": current_user.id}
+        )
+
+    # Sync to tenant schema if applicable
+    if current_user.tenant_id:
+        try:
+            tenant_schema = await resolve_user_tenant_schema(current_user, db_session)
+            if tenant_schema and tenant_schema != "public":
+                if payload.full_name is not None and payload.full_name.strip():
+                    await db_session.execute(
+                        text(f'UPDATE "{tenant_schema}".admin_users SET full_name = :fn, updated_at = CURRENT_TIMESTAMP WHERE username = :un'),
+                        {"fn": current_user.full_name, "un": current_user.username}
+                    )
+                if payload.password is not None and payload.password.strip():
+                    await db_session.execute(
+                        text(f'UPDATE "{tenant_schema}".admin_users SET hashed_password = :hp, updated_at = CURRENT_TIMESTAMP WHERE username = :un'),
+                        {"hp": current_user.hashed_password, "un": current_user.username}
+                    )
+        except Exception as e:
+            logger.warning(f"Could not sync profile to tenant schema: {e}")
+
+    await db_session.commit()
     return current_user
 
 

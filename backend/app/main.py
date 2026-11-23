@@ -15,6 +15,7 @@ from apscheduler.schedulers.asyncio import AsyncIOScheduler
 import time
 from app.core.config import settings
 from app.core.logging_config import setup_logging
+from app.core.tenant_context import set_tenant_override, reset_tenant_override
 from app.core.database import init_db, check_db_health
 from app.services.database_service import db
 from app.services.reminder_service import check_and_send_1hr_reminders
@@ -24,7 +25,7 @@ from app.api.v1.appointments import router as appointments_router
 from app.api.v1.admin import router as admin_router
 
 # Initialize application-wide daily text file logging
-setup_logging(log_level=settings.LOG_LEVEL, retention_days=settings.LOG_RETENTION_DAYS)
+setup_logging(log_level=settings.LOG_LEVEL, log_dir=settings.LOG_DIR, retention_days=settings.LOG_RETENTION_DAYS)
 logger = logging.getLogger("main")
 
 scheduler = AsyncIOScheduler()
@@ -81,12 +82,30 @@ app.add_middleware(
 )
 
 
+@app.middleware("http")
+async def tenant_context_middleware(request: Request, call_next):
+    """
+    Captures X-Tenant-ID or X-Tenant-Schema header sent by Super Admin to impersonate
+    or manage specific clinic tenants. Stores context safely per async execution task.
+    """
+    tenant_header = request.headers.get("x-tenant-id") or request.headers.get("x-tenant-schema")
+    token = set_tenant_override(tenant_header)
+    try:
+        response = await call_next(request)
+        return response
+    finally:
+        reset_tenant_override(token)
+
+
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
 
 @app.exception_handler(StarletteHTTPException)
 async def custom_http_exception_handler(request: Request, exc: StarletteHTTPException):
     origin = request.headers.get("origin") or "http://localhost:5173"
+    # Log 4xx warnings to file
+    if exc.status_code >= 400:
+        logger.warning(f"HTTP {exc.status_code} on {request.method} {request.url.path}: {exc.detail}")
     return JSONResponse(
         status_code=exc.status_code,
         content={"detail": exc.detail},
@@ -101,7 +120,20 @@ async def custom_http_exception_handler(request: Request, exc: StarletteHTTPExce
 
 @app.exception_handler(Exception)
 async def global_exception_handler(request: Request, exc: Exception):
-    logger.error(f"GLOBAL ERROR on {request.method} {request.url}: {exc}", exc_info=True)
+    import traceback
+    tb = traceback.format_exc()
+    logger.error(
+        f"GLOBAL UNHANDLED EXCEPTION on {request.method} {request.url.path}\n"
+        f"Client: {request.client.host if request.client else 'unknown'}\n"
+        f"Headers: {dict(request.headers)}\n"
+        f"Traceback:\n{tb}"
+    )
+    # Flush all handlers immediately so daily text log file captures the crash
+    for handler in logging.getLogger().handlers:
+        try:
+            handler.flush()
+        except Exception:
+            pass
     origin = request.headers.get("origin") or "http://localhost:5173"
     return JSONResponse(
         status_code=500,

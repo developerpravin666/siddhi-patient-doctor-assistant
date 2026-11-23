@@ -135,8 +135,8 @@ async def create_tenant(
         id=clinic_id,
         tenant_id=tenant.id,
         name=payload.name,
-        address="Suite 101, Medical Health Center",
-        phone=payload.owner_phone or "+91 98765 00000",
+        address="Main Facility Address",
+        phone=payload.owner_phone or "",
         timezone="Asia/Kolkata",
         consultation_hours="Monday - Saturday: 9:00 AM - 1:00 PM, 4:00 PM - 7:30 PM (Sundays Closed)"
     )
@@ -1355,7 +1355,7 @@ async def get_whatsapp_config(
 @router.post("/whatsapp/config", response_model=WhatsAppConfigOut)
 async def update_whatsapp_config(
     payload: WhatsAppConfigUpdate,
-    current_user: AdminUser = Depends(require_roles(["SUPER_ADMIN", "CLINIC_ADMIN"])),
+    current_user: AdminUser = Depends(require_roles(["SUPER_ADMIN"])),
     db_session: AsyncSession = Depends(get_db)
 ):
     tenant_schema = await resolve_user_tenant_schema(current_user, db_session)
@@ -1408,7 +1408,7 @@ async def update_whatsapp_config(
 @router.post("/whatsapp/test")
 async def test_whatsapp_connection(
     payload: WhatsAppTestRequest,
-    current_user: AdminUser = Depends(require_roles(["SUPER_ADMIN", "CLINIC_ADMIN"])),
+    current_user: AdminUser = Depends(require_roles(["SUPER_ADMIN"])),
     db_session: AsyncSession = Depends(get_db)
 ):
     tenant_schema = await resolve_user_tenant_schema(current_user, db_session)

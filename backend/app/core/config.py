@@ -116,11 +116,11 @@ class Settings(BaseSettings):
     LOG_RETENTION_DAYS: int = 30
 
     # Clinic Default Metadata
-    DEFAULT_DOCTOR_NAME: str = "Dr. Siddhi Patel"
+    DEFAULT_DOCTOR_NAME: str = "Doctor"
     DEFAULT_DOCTOR_SPECIALTY: str = "General Physician"
-    DEFAULT_CLINIC_NAME: str = "Dr. Siddhi Patidar's Clinic"
-    DEFAULT_CLINIC_ADDRESS: str = "Suite 402, Siddhi Medical Enclave, Central Avenue"
-    DEFAULT_CLINIC_PHONE: str = "+91 98765 00000"
+    DEFAULT_CLINIC_NAME: str = "Medical Clinic"
+    DEFAULT_CLINIC_ADDRESS: str = "Clinic Facility"
+    DEFAULT_CLINIC_PHONE: str = "Contact Clinic Front Desk"
 
     @field_validator("CORS_ORIGINS", mode="before")
     @classmethod

@@ -265,7 +265,10 @@ async def init_db():
                 # Create public tables in public schema
                 await conn.execute(text('SET search_path TO public;'))
                 
-                # Ensure core public tables exist
+                # Ensure ONLY core shared/common tables exist in public schema
+                # (tenants, admin_users, specializations, webhook_events)
+                # All clinical entity tables (clinics, doctors, patients, appointments)
+                # are strictly isolated within each tenant's dedicated PostgreSQL schema.
                 public_ddl = """
                     CREATE TABLE IF NOT EXISTS public.tenants (
                         id VARCHAR(36) PRIMARY KEY,
@@ -302,73 +305,6 @@ async def init_db():
                         updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
                     );
 
-                    CREATE TABLE IF NOT EXISTS public.clinics (
-                        id VARCHAR(36) PRIMARY KEY,
-                        tenant_id VARCHAR(36) REFERENCES public.tenants(id) ON DELETE CASCADE,
-                        name VARCHAR(150) NOT NULL,
-                        address VARCHAR(255) NOT NULL,
-                        phone VARCHAR(30),
-                        timezone VARCHAR(50) DEFAULT 'Asia/Kolkata',
-                        consultation_hours VARCHAR(255),
-                        whatsapp_phone_number_id VARCHAR(50),
-                        whatsapp_business_account_id VARCHAR(50),
-                        whatsapp_access_token TEXT,
-                        whatsapp_verify_token VARCHAR(100),
-                        bot_config JSON,
-                        created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
-                        updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
-                    );
-
-                    CREATE TABLE IF NOT EXISTS public.doctors (
-                        id VARCHAR(36) PRIMARY KEY,
-                        clinic_id VARCHAR(36) NOT NULL,
-                        name VARCHAR(100) NOT NULL,
-                        specialty TEXT NOT NULL,
-                        available_days VARCHAR(100) NOT NULL,
-                        morning_slots TEXT,
-                        evening_slots TEXT,
-                        slot_duration_minutes INTEGER DEFAULT 30,
-                        is_active BOOLEAN DEFAULT TRUE,
-                        created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
-                        updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
-                    );
-
-                    CREATE TABLE IF NOT EXISTS public.patients (
-                        id VARCHAR(36) PRIMARY KEY,
-                        tenant_id VARCHAR(36),
-                        full_name VARCHAR(120) NOT NULL,
-                        mobile_number VARCHAR(20) NOT NULL,
-                        email VARCHAR(100),
-                        gender VARCHAR(20),
-                        age INTEGER,
-                        address VARCHAR(255),
-                        status VARCHAR(20) DEFAULT 'ACTIVE',
-                        is_active BOOLEAN DEFAULT TRUE,
-                        created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
-                        updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
-                    );
-
-                    CREATE TABLE IF NOT EXISTS public.appointments (
-                        id VARCHAR(36) PRIMARY KEY,
-                        tenant_id VARCHAR(36),
-                        clinic_id VARCHAR(36) NOT NULL,
-                        doctor_id VARCHAR(36),
-                        patient_id VARCHAR(36),
-                        patient_name VARCHAR(120) NOT NULL,
-                        mobile_number VARCHAR(20) NOT NULL,
-                        doctor_name VARCHAR(100) NOT NULL,
-                        clinic_name VARCHAR(150) NOT NULL,
-                        clinic_address VARCHAR(255),
-                        appointment_date VARCHAR(15) NOT NULL,
-                        time_slot VARCHAR(20) NOT NULL,
-                        appointment_datetime TIMESTAMP WITH TIME ZONE NOT NULL,
-                        status VARCHAR(25) DEFAULT 'CONFIRMED',
-                        reminder_sent BOOLEAN DEFAULT FALSE,
-                        reminder_sent_at TIMESTAMP WITH TIME ZONE,
-                        created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
-                        updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
-                    );
-
                     CREATE TABLE IF NOT EXISTS public.webhook_events (
                         id VARCHAR(36) PRIMARY KEY,
                         event_type VARCHAR(50) DEFAULT 'message',
@@ -399,10 +335,6 @@ async def init_db():
                     "ALTER TABLE public.tenants ADD COLUMN IF NOT EXISTS owner_email VARCHAR(100);",
                     "ALTER TABLE public.admin_users ADD COLUMN IF NOT EXISTS permissions JSON;",
                     "ALTER TABLE public.admin_users ALTER COLUMN role DROP DEFAULT;",
-                    "ALTER TABLE public.clinics ADD COLUMN IF NOT EXISTS whatsapp_business_account_id VARCHAR(50);",
-                    "ALTER TABLE public.clinics ADD COLUMN IF NOT EXISTS whatsapp_access_token TEXT;",
-                    "ALTER TABLE public.clinics ADD COLUMN IF NOT EXISTS whatsapp_verify_token VARCHAR(100);",
-                    "ALTER TABLE public.clinics ADD COLUMN IF NOT EXISTS bot_config JSON;",
                 ]
                 for p_mig in public_migrations:
                     try:

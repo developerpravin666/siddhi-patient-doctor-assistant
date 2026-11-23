@@ -148,10 +148,10 @@ export const TenantsManagement: React.FC<{ defaultMode?: 'server' | 'client' }> 
         <div>
           <div className="font-semibold text-slate-800 flex items-center gap-1">
             <Stethoscope className="w-3 h-3 text-emerald-600" />
-            <span>{tenant.owner_name || 'Dr. Siddhi Patel'}</span>
+            <span>{tenant.owner_name || 'Not provided'}</span>
           </div>
           <div className="text-slate-400 text-[11px] mt-0.5">
-            {tenant.owner_phone || '+91 98765 00000'}
+            {tenant.owner_phone || '—'}
           </div>
         </div>
       )
