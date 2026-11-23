@@ -195,3 +195,44 @@ async def book_appointment(
         "time_slot": result["time_slot"],
         "appointment_datetime": result["appointment_datetime"]
     }
+
+
+async def reschedule_appointment(
+    appointment_id: str,
+    date: str,
+    time_slot: str,
+    tenant_schema: str = "public"
+) -> Dict[str, Any]:
+    """
+    Reschedules an existing appointment to a new date and time slot.
+    """
+    now = datetime.now()
+    if not date or date.lower() in ("tomorrow", "tmrw"):
+        target_date = (now + timedelta(days=1)).strftime("%Y-%m-%d")
+    elif date.lower() == "today":
+        target_date = now.strftime("%Y-%m-%d")
+    else:
+        try:
+            target_date = datetime.strptime(date.strip(), "%Y-%m-%d").strftime("%Y-%m-%d")
+        except Exception:
+            target_date = (now + timedelta(days=1)).strftime("%Y-%m-%d")
+
+    return await db.reschedule_appointment(
+        appointment_id=appointment_id,
+        new_date=target_date,
+        new_time_slot=time_slot.strip(),
+        tenant_schema=tenant_schema
+    )
+
+
+async def cancel_appointment(
+    appointment_id: str,
+    tenant_schema: str = "public"
+) -> Dict[str, Any]:
+    """
+    Cancels an existing appointment and frees up the slot.
+    """
+    return await db.cancel_appointment(
+        appointment_id=appointment_id,
+        tenant_schema=tenant_schema
+    )

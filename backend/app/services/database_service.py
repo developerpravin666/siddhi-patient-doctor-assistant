@@ -313,10 +313,163 @@ class DatabaseService:
                 await session.rollback()
                 logger.error(f"Failed to create appointment in schema '{safe_schema}': {e}")
                 raise e
+
+    @staticmethod
+    async def get_active_appointment_for_phone(phone_number: str, tenant_schema: str = "public") -> Optional[Dict[str, Any]]:
+        """
+        Retrieves the earliest upcoming confirmed appointment for the patient identified by phone number.
+        """
+        safe_schema = await DatabaseService.resolve_schema(tenant_schema)
+        digits = "".join(filter(str.isdigit, str(phone_number or "")))
+        if not digits:
+            return None
+        last10 = digits[-10:] if len(digits) >= 10 else digits
+        today_str = datetime.now().strftime("%Y-%m-%d")
+
+        async with AsyncSessionLocal() as session:
+            try:
+                if is_postgres():
+                    await session.execute(text(f'SET search_path TO "{safe_schema}", public;'))
+
+                stmt = select(Appointment).where(
+                    and_(
+                        Appointment.status == "CONFIRMED",
+                        Appointment.mobile_number.like(f"%{last10}"),
+                        Appointment.appointment_date >= today_str
+                    )
+                ).order_by(Appointment.appointment_datetime.asc()).limit(1)
+
+                res = await session.execute(stmt)
+                appt = res.scalar_one_or_none()
+                if not appt:
+                    return None
+
+                return {
+                    "id": appt.id,
+                    "patient_name": appt.patient_name,
+                    "mobile_number": appt.mobile_number,
+                    "doctor_id": appt.doctor_id,
+                    "doctor_name": appt.doctor_name,
+                    "clinic_name": appt.clinic_name,
+                    "clinic_address": appt.clinic_address,
+                    "appointment_date": appt.appointment_date,
+                    "time_slot": appt.time_slot,
+                    "appointment_datetime": appt.appointment_datetime,
+                    "status": appt.status
+                }
+            except Exception as e:
+                logger.warning(f"Error fetching active appointment for {phone_number} in schema '{safe_schema}': {e}")
+                return None
+
+    @staticmethod
+    async def cancel_appointment(appointment_id: str, tenant_schema: str = "public") -> Dict[str, Any]:
+        """
+        Cancels an appointment and frees up the slot for other patients.
+        """
+        safe_schema = await DatabaseService.resolve_schema(tenant_schema)
+        async with AsyncSessionLocal() as session:
+            try:
+                if is_postgres():
+                    await session.execute(text(f'SET search_path TO "{safe_schema}", public;'))
+
+                stmt = select(Appointment).where(Appointment.id == appointment_id)
+                res = await session.execute(stmt)
+                appt = res.scalar_one_or_none()
+                if not appt:
+                    return {"status": "NOT_FOUND", "error": "Appointment not found"}
+
+                appt.status = "CANCELLED"
+                await session.commit()
+                return {
+                    "status": "SUCCESS",
+                    "id": appt.id,
+                    "patient_name": appt.patient_name,
+                    "doctor_name": appt.doctor_name,
+                    "appointment_date": appt.appointment_date,
+                    "time_slot": appt.time_slot
+                }
             except Exception as e:
                 await session.rollback()
-                logger.error(f"Failed to create appointment: {e}")
-                raise e
+                logger.error(f"Error cancelling appointment {appointment_id}: {e}")
+                return {"status": "ERROR", "error": str(e)}
+
+    @staticmethod
+    async def reschedule_appointment(
+        appointment_id: str,
+        new_date: str,
+        new_time_slot: str,
+        tenant_schema: str = "public"
+    ) -> Dict[str, Any]:
+        """
+        Reschedules an appointment to a new date and time slot with double-booking prevention.
+        """
+        safe_schema = await DatabaseService.resolve_schema(tenant_schema)
+        async with AsyncSessionLocal() as session:
+            try:
+                if is_postgres():
+                    await session.execute(text(f'SET search_path TO "{safe_schema}", public;'))
+
+                stmt = select(Appointment).where(Appointment.id == appointment_id)
+                res = await session.execute(stmt)
+                appt = res.scalar_one_or_none()
+                if not appt:
+                    return {"status": "NOT_FOUND", "error": "Appointment not found"}
+
+                # Check if new slot has a clash with another appointment
+                clash_stmt = select(Appointment).where(
+                    and_(
+                        Appointment.id != appointment_id,
+                        Appointment.doctor_id == appt.doctor_id,
+                        Appointment.appointment_date == new_date,
+                        Appointment.time_slot == new_time_slot,
+                        Appointment.status.in_(["CONFIRMED", "COMPLETED"])
+                    )
+                )
+                existing_clash = (await session.execute(clash_stmt)).scalar_one_or_none()
+                if existing_clash:
+                    return {
+                        "status": "SLOT_TAKEN",
+                        "error": f"The slot {new_time_slot} on {new_date} was just booked by another patient."
+                    }
+
+                # Retrieve clinic for timezone
+                clinic_res = await session.execute(select(Clinic).where(Clinic.id == appt.clinic_id))
+                clinic = clinic_res.scalar_one_or_none()
+                tz_name = clinic.timezone if clinic else settings.DEFAULT_CLINIC_TIMEZONE
+
+                utc_dt = DatabaseService.parse_slot_to_utc(new_date, new_time_slot, tz_name=tz_name)
+
+                old_date = appt.appointment_date
+                old_time = appt.time_slot
+
+                appt.appointment_date = new_date
+                appt.time_slot = new_time_slot
+                appt.appointment_datetime = utc_dt
+                appt.status = "CONFIRMED"
+                appt.reminder_sent = False
+                appt.reminder_sent_at = None
+
+                await session.commit()
+                await session.refresh(appt)
+
+                return {
+                    "status": "SUCCESS",
+                    "id": appt.id,
+                    "patient_name": appt.patient_name,
+                    "mobile_number": appt.mobile_number,
+                    "doctor_name": appt.doctor_name,
+                    "clinic_name": appt.clinic_name,
+                    "clinic_address": appt.clinic_address,
+                    "old_date": old_date,
+                    "old_time": old_time,
+                    "date": appt.appointment_date,
+                    "time_slot": appt.time_slot,
+                    "appointment_datetime": appt.appointment_datetime.isoformat() if hasattr(appt.appointment_datetime, "isoformat") else str(appt.appointment_datetime)
+                }
+            except Exception as e:
+                await session.rollback()
+                logger.error(f"Error rescheduling appointment {appointment_id}: {e}")
+                return {"status": "ERROR", "error": str(e)}
 
     @staticmethod
     async def get_unreminded_appointments_between(window_start: datetime, window_end: datetime) -> List[Dict[str, Any]]:

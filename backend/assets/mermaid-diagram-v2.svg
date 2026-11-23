@@ -1,0 +1,131 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1348.1549999999997 1026.4279999999999" width="1348.1549999999997" height="1026.4279999999999" style="--bg:#18181B;--fg:#F4F4F5;--line:#71717A;--muted:#A1A1AA;--surface:#27272A;--border:#3F3F46;background:var(--bg)">
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&amp;display=swap');
+  text { font-family: 'Inter', system-ui, sans-serif; }
+  svg {
+    /* Derived from --bg and --fg (overridable via --line, --accent, etc.) */
+    --_text:          var(--fg);
+    --_text-sec:      var(--muted, color-mix(in srgb, var(--fg) 60%, var(--bg)));
+    --_text-muted:    var(--muted, color-mix(in srgb, var(--fg) 40%, var(--bg)));
+    --_text-faint:    color-mix(in srgb, var(--fg) 25%, var(--bg));
+    --_line:          var(--line, color-mix(in srgb, var(--fg) 50%, var(--bg)));
+    --_arrow:         var(--accent, color-mix(in srgb, var(--fg) 85%, var(--bg)));
+    --_node-fill:     var(--surface, color-mix(in srgb, var(--fg) 3%, var(--bg)));
+    --_node-stroke:   var(--border, color-mix(in srgb, var(--fg) 20%, var(--bg)));
+    --_group-fill:    var(--bg);
+    --_group-hdr:     color-mix(in srgb, var(--fg) 5%, var(--bg));
+    --_inner-stroke:  color-mix(in srgb, var(--fg) 12%, var(--bg));
+    --_key-badge:     color-mix(in srgb, var(--fg) 10%, var(--bg));
+  }
+</style>
+<defs>
+  <marker id="arrowhead" markerWidth="8" markerHeight="5" refX="7" refY="2.5" orient="auto">
+    <polygon points="0 0, 8 2.5, 0 5" fill="var(--_arrow)" stroke="var(--_arrow)" stroke-width="0.75" stroke-linejoin="round" />
+  </marker>
+  <marker id="arrowhead-start" markerWidth="8" markerHeight="5" refX="1" refY="2.5" orient="auto-start-reverse">
+    <polygon points="8 0, 0 2.5, 8 5" fill="var(--_arrow)" stroke="var(--_arrow)" stroke-width="0.75" stroke-linejoin="round" />
+  </marker>
+</defs>
+<polyline class="edge" data-from="A" data-to="B" data-style="solid" data-arrow-start="false" data-arrow-end="true" points="911.9752499999997,76.9 911.9752499999997,124.9" fill="none" stroke="var(--_line)" stroke-width="1" marker-end="url(#arrowhead)" />
+<polyline class="edge" data-from="B" data-to="C" data-style="solid" data-arrow-start="false" data-arrow-end="true" data-label="Yes - Has Upcoming Appointment" points="869.1205833333331,339.1733333333334 869.1205833333331,418.028 792.7114999999999,418.028 792.7114999999998,498.3280000000001" fill="none" stroke="var(--_line)" stroke-width="1" marker-end="url(#arrowhead)" />
+<polyline class="edge" data-from="C" data-to="D1" data-style="solid" data-arrow-start="false" data-arrow-end="true" points="792.7114999999998,552.128 792.7114999999998,578.578 177.68249999999992,578.578 177.68249999999992,605.028" fill="none" stroke="var(--_line)" stroke-width="1" marker-end="url(#arrowhead)" />
+<polyline class="edge" data-from="C" data-to="D2" data-style="solid" data-arrow-start="false" data-arrow-end="true" points="792.7114999999998,552.128 792.7114999999998,578.578 571.2269999999999,578.578 571.2269999999999,605.028" fill="none" stroke="var(--_line)" stroke-width="1" marker-end="url(#arrowhead)" />
+<polyline class="edge" data-from="C" data-to="D3" data-style="solid" data-arrow-start="false" data-arrow-end="true" points="792.7114999999998,552.128 792.7114999999998,578.578 792.7114999999998,578.578 792.7114999999998,667.028" fill="none" stroke="var(--_line)" stroke-width="1" marker-end="url(#arrowhead)" />
+<polyline class="edge" data-from="C" data-to="D4" data-style="solid" data-arrow-start="false" data-arrow-end="true" points="792.7114999999998,552.128 792.7114999999998,578.578 1029.0159999999998,578.578 1029.0159999999998,605.028" fill="none" stroke="var(--_line)" stroke-width="1" marker-end="url(#arrowhead)" />
+<polyline class="edge" data-from="C" data-to="D5" data-style="solid" data-arrow-start="false" data-arrow-end="true" points="792.7114999999998,552.128 792.7114999999998,578.578 1233.4574999999998,578.578 1233.4574999999998,605.028" fill="none" stroke="var(--_line)" stroke-width="1" marker-end="url(#arrowhead)" />
+<polyline class="edge" data-from="B" data-to="E" data-style="solid" data-arrow-start="false" data-arrow-end="true" data-label="No Active Appointment" points="954.8299166666665,339.1733333333333 954.8299166666665,418.028 1031.2389999999998,418.028 1031.2389999999996,498.328" fill="none" stroke="var(--_line)" stroke-width="1" marker-end="url(#arrowhead)" />
+<polyline class="edge" data-from="D1" data-to="F" data-style="solid" data-arrow-start="false" data-arrow-end="true" points="177.68249999999992,641.928 177.68249999999995,667.028" fill="none" stroke="var(--_line)" stroke-width="1" marker-end="url(#arrowhead)" />
+<polyline class="edge" data-from="F" data-to="G" data-style="solid" data-arrow-start="false" data-arrow-end="true" points="177.68249999999995,720.828 177.68249999999995,762.828" fill="none" stroke="var(--_line)" stroke-width="1" marker-end="url(#arrowhead)" />
+<polyline class="edge" data-from="G" data-to="H" data-style="solid" data-arrow-start="false" data-arrow-end="true" points="177.68249999999995,799.728 177.68249999999995,841.8779999999999" fill="none" stroke="var(--_line)" stroke-width="1" marker-end="url(#arrowhead)" />
+<polyline class="edge" data-from="H" data-to="I" data-style="solid" data-arrow-start="false" data-arrow-end="true" points="177.68249999999995,895.6779999999999 177.68249999999995,949.5279999999999" fill="none" stroke="var(--_line)" stroke-width="1" marker-end="url(#arrowhead)" />
+<polyline class="edge" data-from="D2" data-to="J" data-style="solid" data-arrow-start="false" data-arrow-end="true" points="571.2269999999999,641.928 571.2269999999999,667.028" fill="none" stroke="var(--_line)" stroke-width="1" marker-end="url(#arrowhead)" />
+<polyline class="edge" data-from="J" data-to="K" data-style="solid" data-arrow-start="false" data-arrow-end="true" data-label="1. Yes" points="538.0533333333333,720.828 538.0533333333333,784.328 431.0299999999999,784.328 431.0299999999999,841.8779999999999" fill="none" stroke="var(--_line)" stroke-width="1" marker-end="url(#arrowhead)" />
+<polyline class="edge" data-from="J" data-to="L" data-style="solid" data-arrow-start="false" data-arrow-end="true" data-label="2. No" points="604.4006666666666,720.828 604.4006666666666,738.828 711.4239999999999,738.828 711.4239999999999,841.8779999999999" fill="none" stroke="var(--_line)" stroke-width="1" marker-end="url(#arrowhead)" />
+<g class="edge-label" data-from="B" data-to="C" data-label="Yes - Has Upcoming Appointment">
+  <rect x="707.7114999999999" y="425.028" width="169.11999999999998" height="30.3" rx="2" ry="2" fill="var(--bg)" stroke="var(--_inner-stroke)" stroke-width="1" />
+  <text x="792.2714999999998" y="440.178" text-anchor="middle" font-size="11" font-weight="400" fill="var(--_text-sec)" dy="3.8499999999999996">Yes - Has Upcoming Appointment</text>
+</g>
+<g class="edge-label" data-from="B" data-to="E" data-label="No Active Appointment">
+  <rect x="970.2389999999997" y="425.028" width="121.006" height="30.3" rx="2" ry="2" fill="var(--bg)" stroke="var(--_inner-stroke)" stroke-width="1" />
+  <text x="1030.7419999999997" y="440.178" text-anchor="middle" font-size="11" font-weight="400" fill="var(--_text-sec)" dy="3.8499999999999996">No Active Appointment</text>
+</g>
+<g class="edge-label" data-from="J" data-to="K" data-label="1. Yes">
+  <rect x="409.0299999999999" y="791.328" width="43.192" height="30.3" rx="2" ry="2" fill="var(--bg)" stroke="var(--_inner-stroke)" stroke-width="1" />
+  <text x="430.6259999999999" y="806.478" text-anchor="middle" font-size="11" font-weight="400" fill="var(--_text-sec)" dy="3.8499999999999996">1. Yes</text>
+</g>
+<g class="edge-label" data-from="J" data-to="L" data-label="2. No">
+  <rect x="690.9239999999999" y="745.828" width="40.816" height="30.3" rx="2" ry="2" fill="var(--bg)" stroke="var(--_inner-stroke)" stroke-width="1" />
+  <text x="711.3319999999999" y="760.978" text-anchor="middle" font-size="11" font-weight="400" fill="var(--_text-sec)" dy="3.8499999999999996">2. No</text>
+</g>
+<g class="node" data-id="A" data-label="Patient sends 'Hi'" data-shape="rectangle">
+  <rect x="841.3532499999998" y="40" width="141.244" height="36.900000000000006" rx="0" ry="0" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="0.75" />
+  <text x="911.9752499999997" y="58.45" text-anchor="middle" font-size="13" font-weight="500" fill="var(--_text)" dy="4.55">Patient sends &#39;Hi&#39;</text>
+</g>
+<g class="node" data-id="B" data-label="Active Appointment Found in DB?" data-shape="diamond">
+  <polygon points="911.9752499999997,124.9 1040.5392499999998,253.464 911.9752499999997,382.028 783.4112499999998,253.464" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="0.75" />
+  <text x="911.9752499999997" y="253.464" text-anchor="middle" font-size="13" font-weight="500" fill="var(--_text)" dy="4.55">Active Appointment Found in DB?</text>
+</g>
+<g class="node" data-id="C" data-label="Display Appointment Details Card
++ 5 Interactive Options" data-shape="rectangle">
+  <rect x="675.7769999999998" y="498.3280000000001" width="233.86899999999994" height="53.800000000000004" rx="0" ry="0" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="0.75" />
+  <text x="792.7114999999998" y="525.2280000000001" text-anchor="middle" font-size="13" font-weight="500" fill="var(--_text)"><tspan x="792.7114999999998" dy="-3.9000000000000012">Display Appointment Details Card</tspan><tspan x="792.7114999999998" dy="16.900000000000002">+ 5 Interactive Options</tspan></text>
+</g>
+<g class="node" data-id="D1" data-label="1️⃣ Reschedule Appointment" data-shape="rectangle">
+  <rect x="78.16149999999995" y="605.028" width="199.04199999999994" height="36.900000000000006" rx="0" ry="0" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="0.75" />
+  <text x="177.68249999999992" y="623.4780000000001" text-anchor="middle" font-size="13" font-weight="500" fill="var(--_text)" dy="4.55">1️⃣ Reschedule Appointment</text>
+</g>
+<g class="node" data-id="D2" data-label="2️⃣ Cancel Appointment" data-shape="rectangle">
+  <rect x="484.3029999999999" y="605.028" width="173.84799999999996" height="36.900000000000006" rx="0" ry="0" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="0.75" />
+  <text x="571.2269999999999" y="623.4780000000001" text-anchor="middle" font-size="13" font-weight="500" fill="var(--_text)" dy="4.55">2️⃣ Cancel Appointment</text>
+</g>
+<g class="node" data-id="D3" data-label="3️⃣ Book Another Appointment" data-shape="rectangle">
+  <rect x="686.1509999999998" y="667.028" width="213.12099999999995" height="36.900000000000006" rx="0" ry="0" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="0.75" />
+  <text x="792.7114999999998" y="685.4780000000001" text-anchor="middle" font-size="13" font-weight="500" fill="var(--_text)" dy="4.55">3️⃣ Book Another Appointment</text>
+</g>
+<g class="node" data-id="D4" data-label="4️⃣ Clinic Timings &amp; Location" data-shape="rectangle">
+  <rect x="927.2719999999998" y="605.028" width="203.48799999999997" height="36.900000000000006" rx="0" ry="0" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="0.75" />
+  <text x="1029.0159999999998" y="623.4780000000001" text-anchor="middle" font-size="13" font-weight="500" fill="var(--_text)" dy="4.55">4️⃣ Clinic Timings &amp; Location</text>
+</g>
+<g class="node" data-id="D5" data-label="5️⃣ Speak with Staff" data-shape="rectangle">
+  <rect x="1158.7599999999998" y="605.028" width="149.395" height="36.900000000000006" rx="0" ry="0" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="0.75" />
+  <text x="1233.4574999999998" y="623.4780000000001" text-anchor="middle" font-size="13" font-weight="500" fill="var(--_text)" dy="4.55">5️⃣ Speak with Staff</text>
+</g>
+<g class="node" data-id="E" data-label="Standard Welcome Menu
+1️⃣ Book Appointment
+2️⃣ Timings &amp; Location
+3️⃣ Speak with Staff" data-shape="rectangle">
+  <rect x="937.6459999999997" y="498.328" width="187.18599999999998" height="87.60000000000001" rx="0" ry="0" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="0.75" />
+  <text x="1031.2389999999998" y="542.1279999999999" text-anchor="middle" font-size="13" font-weight="500" fill="var(--_text)"><tspan x="1031.2389999999998" dy="-20.8">Standard Welcome Menu</tspan><tspan x="1031.2389999999998" dy="16.900000000000002">1️⃣ Book Appointment</tspan><tspan x="1031.2389999999998" dy="16.900000000000002">2️⃣ Timings &amp; Location</tspan><tspan x="1031.2389999999998" dy="16.900000000000002">3️⃣ Speak with Staff</tspan></text>
+</g>
+<g class="node" data-id="F" data-label="Prompt New Date Selection
+(Doctor &amp; Patient details preserved)" data-shape="rectangle">
+  <rect x="53.70849999999996" y="667.028" width="247.94799999999998" height="53.800000000000004" rx="0" ry="0" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="0.75" />
+  <text x="177.68249999999995" y="693.928" text-anchor="middle" font-size="13" font-weight="500" fill="var(--_text)"><tspan x="177.68249999999995" dy="-3.9000000000000012">Prompt New Date Selection</tspan><tspan x="177.68249999999995" dy="16.900000000000002">(Doctor &amp; Patient details preserved)</tspan></text>
+</g>
+<g class="node" data-id="G" data-label="Fetch &amp; Present Available Slots" data-shape="rectangle">
+  <rect x="65.56449999999997" y="762.828" width="224.23599999999993" height="36.900000000000006" rx="0" ry="0" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="0.75" />
+  <text x="177.68249999999995" y="781.278" text-anchor="middle" font-size="13" font-weight="500" fill="var(--_text)" dy="4.55">Fetch &amp; Present Available Slots</text>
+</g>
+<g class="node" data-id="H" data-label="Verify Slot &amp; Update DB
+(Release previous slot)" data-shape="rectangle">
+  <rect x="89.27649999999994" y="841.8779999999999" width="176.81199999999998" height="53.800000000000004" rx="0" ry="0" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="0.75" />
+  <text x="177.68249999999995" y="868.7779999999999" text-anchor="middle" font-size="13" font-weight="500" fill="var(--_text)"><tspan x="177.68249999999995" dy="-3.9000000000000012">Verify Slot &amp; Update DB</tspan><tspan x="177.68249999999995" dy="16.900000000000002">(Release previous slot)</tspan></text>
+</g>
+<g class="node" data-id="I" data-label="Send Rescheduled Confirmation Receipt" data-shape="rectangle">
+  <rect x="40" y="949.5279999999999" width="275.3649999999999" height="36.900000000000006" rx="0" ry="0" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="0.75" />
+  <text x="177.68249999999995" y="967.978" text-anchor="middle" font-size="13" font-weight="500" fill="var(--_text)" dy="4.55">Send Rescheduled Confirmation Receipt</text>
+</g>
+<g class="node" data-id="J" data-label="Confirmation Prompt
+1️⃣ Yes, cancel | 2️⃣ No, keep" data-shape="rectangle">
+  <rect x="471.7059999999999" y="667.028" width="199.042" height="53.800000000000004" rx="0" ry="0" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="0.75" />
+  <text x="571.2269999999999" y="693.928" text-anchor="middle" font-size="13" font-weight="500" fill="var(--_text)"><tspan x="571.2269999999999" dy="-3.9000000000000012">Confirmation Prompt</tspan><tspan x="571.2269999999999" dy="16.900000000000002">1️⃣ Yes, cancel | 2️⃣ No, keep</tspan></text>
+</g>
+<g class="node" data-id="K" data-label="Mark CANCELLED in DB &amp; Release Slot" data-shape="rectangle">
+  <rect x="294.08849999999995" y="841.8779999999999" width="273.8829999999999" height="36.900000000000006" rx="0" ry="0" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="0.75" />
+  <text x="431.0299999999999" y="860.328" text-anchor="middle" font-size="13" font-weight="500" fill="var(--_text)" dy="4.55">Mark CANCELLED in DB &amp; Release Slot</text>
+</g>
+<g class="node" data-id="L" data-label="Retain Appointment as Confirmed" data-shape="rectangle">
+  <rect x="595.9714999999999" y="841.8779999999999" width="230.90499999999997" height="36.900000000000006" rx="0" ry="0" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="0.75" />
+  <text x="711.4239999999999" y="860.328" text-anchor="middle" font-size="13" font-weight="500" fill="var(--_text)" dy="4.55">Retain Appointment as Confirmed</text>
+</g>
+</svg>
