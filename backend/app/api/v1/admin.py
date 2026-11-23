@@ -1,5 +1,6 @@
 import logging
 import json
+from datetime import datetime, timezone
 from typing import List, Dict, Any, Optional
 from fastapi import APIRouter, Depends, HTTPException, Query, status, Response
 from sqlalchemy import select, text, func, asc, desc, or_, and_
@@ -7,7 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.config import settings
 from app.core.database import get_db, sanitize_schema_name, provision_tenant_schema, is_postgres
 from app.core.security import get_password_hash
-from app.models.domain import Tenant, Clinic, Doctor, Patient, Appointment, AdminUser, Specialization, get_default_permissions
+from app.models.domain import Tenant, Clinic, Doctor, Patient, Appointment, AdminUser, Specialization, WebhookEvent, get_default_permissions
 from app.models.schemas import (
     DoctorOut, DoctorCreate, DoctorUpdate, DoctorStatusUpdate,
     ClinicOut, ClinicCreate, ClinicUpdate,
@@ -15,7 +16,8 @@ from app.models.schemas import (
     TenantOut, TenantCreate, TenantUpdate,
     AdminUserOut, AdminUserCreate, AdminUserUpdate,
     SpecializationOut, SpecializationCreate, SpecializationUpdate, SpecializationStatusUpdate,
-    WhatsAppConfigOut, WhatsAppConfigUpdate, WhatsAppTestRequest
+    WhatsAppConfigOut, WhatsAppConfigUpdate, WhatsAppTestRequest,
+    WebhookEventOut
 )
 from app.api.v1.auth import get_current_admin, get_optional_admin, require_roles, require_permission, resolve_user_tenant_schema
 from app.services.database_service import db
@@ -1650,3 +1652,121 @@ async def delete_specialization(
     await db_session.delete(spec)
     await db_session.commit()
     return {"message": "Specialization deleted successfully", "id": spec_id}
+
+
+# -----------------------------------------------------------------------------
+# Webhook Events Auditing & Debugging Endpoints (SUPER_ADMIN Only)
+# -----------------------------------------------------------------------------
+@router.get("/webhook-events", response_model=List[WebhookEventOut])
+async def list_webhook_events(
+    response: Response,
+    search: Optional[str] = Query(None, description="Search by sender phone, message body, or message id"),
+    status: Optional[str] = Query(None, description="Filter by event status"),
+    event_type: Optional[str] = Query(None, description="Filter by event type"),
+    sort_by: Optional[str] = Query("created_at", description="Field to sort by"),
+    sort_dir: Optional[str] = Query("desc", description="Sort direction (asc or desc)"),
+    page: Optional[int] = Query(1, ge=1),
+    page_size: Optional[int] = Query(10, ge=1, le=100),
+    db_session: AsyncSession = Depends(get_db),
+    current_user: AdminUser = Depends(require_roles(["SUPER_ADMIN"]))
+):
+    """
+    Returns server-side paginated, sorted, and filtered incoming webhook events.
+    Restricted strictly to SUPER_ADMIN role.
+    """
+    if is_postgres():
+        await db_session.execute(text('SET search_path TO public;'))
+
+    stmt = select(WebhookEvent)
+
+    # 1. Search filter
+    if search and search.strip():
+        term = f"%{search.strip()}%"
+        stmt = stmt.where(
+            or_(
+                WebhookEvent.sender_phone.ilike(term),
+                WebhookEvent.message_body.ilike(term),
+                WebhookEvent.message_id.ilike(term),
+                WebhookEvent.event_type.ilike(term),
+                WebhookEvent.status.ilike(term),
+            )
+        )
+
+    # 2. Status filter
+    if status and status.strip():
+        stmt = stmt.where(WebhookEvent.status == status.strip())
+
+    # 3. Event Type filter
+    if event_type and event_type.strip():
+        stmt = stmt.where(WebhookEvent.event_type.ilike(f"%{event_type.strip()}%"))
+
+    # 4. Total Count
+    count_stmt = select(func.count()).select_from(stmt.subquery())
+    total_count = (await db_session.execute(count_stmt)).scalar() or 0
+    response.headers["X-Total-Count"] = str(total_count)
+    response.headers["Access-Control-Expose-Headers"] = "X-Total-Count, x-total-count"
+
+    # 5. Sorting
+    sort_column = getattr(WebhookEvent, sort_by, WebhookEvent.created_at)
+    if sort_dir and sort_dir.lower() == "asc":
+        stmt = stmt.order_by(asc(sort_column))
+    else:
+        stmt = stmt.order_by(desc(sort_column))
+
+    # 6. Pagination
+    eff_page = page or 1
+    eff_size = page_size or 10
+    offset = (eff_page - 1) * eff_size
+    stmt = stmt.offset(offset).limit(eff_size)
+
+    result = await db_session.execute(stmt)
+    events = result.scalars().all()
+    return events
+
+
+@router.get("/webhook-events/{event_id}", response_model=WebhookEventOut)
+async def get_webhook_event(
+    event_id: str,
+    db_session: AsyncSession = Depends(get_db),
+    current_user: AdminUser = Depends(require_roles(["SUPER_ADMIN"]))
+):
+    if is_postgres():
+        await db_session.execute(text('SET search_path TO public;'))
+
+    stmt = select(WebhookEvent).where(WebhookEvent.id == event_id)
+    event = (await db_session.execute(stmt)).scalar_one_or_none()
+    if not event:
+        raise HTTPException(status_code=404, detail="Webhook event not found")
+    return event
+
+
+@router.delete("/webhook-events/{event_id}", status_code=status.HTTP_200_OK)
+async def delete_webhook_event(
+    event_id: str,
+    db_session: AsyncSession = Depends(get_db),
+    current_user: AdminUser = Depends(require_roles(["SUPER_ADMIN"]))
+):
+    if is_postgres():
+        await db_session.execute(text('SET search_path TO public;'))
+
+    stmt = select(WebhookEvent).where(WebhookEvent.id == event_id)
+    event = (await db_session.execute(stmt)).scalar_one_or_none()
+    if not event:
+        raise HTTPException(status_code=404, detail="Webhook event not found")
+
+    await db_session.delete(event)
+    await db_session.commit()
+    return {"message": "Webhook event deleted successfully", "id": event_id}
+
+
+@router.delete("/webhook-events", status_code=status.HTTP_200_OK)
+async def purge_webhook_events(
+    db_session: AsyncSession = Depends(get_db),
+    current_user: AdminUser = Depends(require_roles(["SUPER_ADMIN"]))
+):
+    if is_postgres():
+        await db_session.execute(text('SET search_path TO public;'))
+
+    await db_session.execute(text("DELETE FROM public.webhook_events;"))
+    await db_session.commit()
+    return {"message": "All webhook events purged successfully"}

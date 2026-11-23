@@ -61,49 +61,148 @@ async def verify_webhook(
     raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Verification token mismatch")
 
 
+async def save_webhook_event_record(
+    event_type: str,
+    status_val: str,
+    sender_phone: Optional[str] = None,
+    recipient_phone_id: Optional[str] = None,
+    message_id: Optional[str] = None,
+    message_body: Optional[str] = None,
+    error_message: Optional[str] = None,
+    raw_payload: Optional[Dict[str, Any]] = None,
+    headers: Optional[Dict[str, Any]] = None,
+):
+    """
+    Persists incoming Meta WhatsApp webhook events into public.webhook_events for auditing & debugging.
+    """
+    try:
+        from app.models.domain import WebhookEvent
+        import uuid
+
+        async with AsyncSessionLocal() as session:
+            if is_postgres():
+                await session.execute(text('SET search_path TO public;'))
+            event = WebhookEvent(
+                id=str(uuid.uuid4()),
+                event_type=event_type,
+                sender_phone=sender_phone,
+                recipient_phone_id=recipient_phone_id,
+                message_id=message_id,
+                message_body=message_body,
+                status=status_val,
+                error_message=error_message,
+                raw_payload=raw_payload,
+                headers=headers
+            )
+            session.add(event)
+            await session.commit()
+    except Exception as e:
+        logger.error(f"Error persisting webhook event to database: {e}")
+
+
 @router.post("/webhook")
 async def receive_whatsapp_event(request: Request, background_tasks: BackgroundTasks):
     """
     Meta WhatsApp Cloud API Inbound Message Receiver.
     Acknowledges within 2 seconds with 200 OK and delegates to background worker.
+    Stores every webhook event in the database for auditing and live monitoring.
     """
     signature = request.headers.get("X-Hub-Signature-256", "")
+    req_headers = {
+        "x-hub-signature-256": signature,
+        "content-type": request.headers.get("content-type", ""),
+        "user-agent": request.headers.get("user-agent", ""),
+        "host": request.headers.get("host", ""),
+    }
     body_bytes = await request.body()
 
     # 1. Verify HMAC SHA-256 signature
     if not security.verify_whatsapp_signature(body_bytes, signature, settings.WHATSAPP_APP_SECRET):
         logger.warning("Rejected webhook event: Invalid HMAC signature")
+        await save_webhook_event_record(
+            event_type="signature_failure",
+            status_val="FAILED",
+            error_message="Invalid HMAC signature (X-Hub-Signature-256 mismatch)",
+            headers=req_headers
+        )
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid signature")
 
     try:
         payload = await request.json()
-    except Exception:
+    except Exception as e:
+        await save_webhook_event_record(
+            event_type="malformed_json",
+            status_val="FAILED",
+            error_message=f"Malformed JSON: {str(e)}",
+            headers=req_headers
+        )
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Malformed JSON")
 
     # 2. Extract message entry & ignore status notifications (sent, delivered, read)
     entries = payload.get("entry", [])
     if not entries:
+        await save_webhook_event_record(
+            event_type="empty_entry",
+            status_val="IGNORED",
+            raw_payload=payload,
+            headers=req_headers
+        )
         return {"status": "ignored_empty_entry"}
 
     entry = entries[0]
     changes = entry.get("changes", [{}])[0]
     value = changes.get("value", {})
     messages = value.get("messages", [])
-
-    if not messages:
-        return {"status": "ignored_non_message_event"}
+    statuses = value.get("statuses", [])
 
     metadata = value.get("metadata", {})
     recipient_phone_id = metadata.get("phone_number_id")
 
+    if not messages:
+        # Record delivery receipts (sent, delivered, read)
+        if statuses:
+            st = statuses[0]
+            st_val = st.get("status", "unknown")
+            rec_id = st.get("recipient_id")
+            msg_id = st.get("id")
+            await save_webhook_event_record(
+                event_type=f"status_{st_val}",
+                status_val="STATUS_UPDATE",
+                sender_phone=rec_id,
+                recipient_phone_id=recipient_phone_id,
+                message_id=msg_id,
+                message_body=f"Message status: {st_val}",
+                raw_payload=payload,
+                headers=req_headers
+            )
+            return {"status": f"status_{st_val}_recorded"}
+
+        await save_webhook_event_record(
+            event_type="non_message",
+            status_val="IGNORED",
+            recipient_phone_id=recipient_phone_id,
+            raw_payload=payload,
+            headers=req_headers
+        )
+        return {"status": "ignored_non_message_event"}
+
     message = messages[0]
     message_id = message.get("id")
     from_number = message.get("from")
-    message_type = message.get("type")
+    message_type = message.get("type", "unknown")
 
     # 3. Idempotency Check
     if message_id and await session_service.is_message_processed(message_id):
         logger.info(f"Duplicate message ignored: {message_id}")
+        await save_webhook_event_record(
+            event_type=f"message_{message_type}",
+            status_val="DUPLICATE",
+            sender_phone=from_number,
+            recipient_phone_id=recipient_phone_id,
+            message_id=message_id,
+            raw_payload=payload,
+            headers=req_headers
+        )
         return {"status": "ignored_duplicate_message"}
 
     if message_id:
@@ -119,6 +218,18 @@ async def receive_whatsapp_event(request: Request, background_tasks: BackgroundT
             text_content = interactive_data.get("button_reply", {}).get("title", "")
         elif interactive_data.get("type") == "list_reply":
             text_content = interactive_data.get("list_reply", {}).get("title", "")
+
+    # Save event into database
+    await save_webhook_event_record(
+        event_type=f"message_{message_type}",
+        status_val="PROCESSED" if (from_number and text_content) else "IGNORED",
+        sender_phone=from_number,
+        recipient_phone_id=recipient_phone_id,
+        message_id=message_id,
+        message_body=text_content or f"[{message_type} message without text]",
+        raw_payload=payload,
+        headers=req_headers
+    )
 
     if from_number and text_content:
         # 5. Offload to background worker to prevent WhatsApp timeout
@@ -138,11 +249,26 @@ async def simulate_whatsapp_chat(req: SimulatorChatRequest):
     """
     Interactive Live Simulator endpoint for testing conversational flow
     directly from Admin Portal without needing an active WhatsApp phone setup.
+    Also logs the simulated interaction into webhook_events.
     """
     reply_text, updated_session, tools_executed = await orchestration_pipeline.process_user_message(
         phone_number=req.phone_number,
         message_text=req.message_text,
         send_whatsapp_reply=False
+    )
+
+    # Record simulated event into webhook_events for super admin inspection
+    await save_webhook_event_record(
+        event_type="simulator_chat",
+        status_val="SIMULATED",
+        sender_phone=req.phone_number,
+        message_body=req.message_text,
+        raw_payload={
+            "phone_number": req.phone_number,
+            "message_text": req.message_text,
+            "reply_text": reply_text,
+            "tools_executed": tools_executed
+        }
     )
 
     return {

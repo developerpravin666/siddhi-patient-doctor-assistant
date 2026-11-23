@@ -347,3 +347,20 @@ class SimulatorChatResponse(BaseModel):
     session_state: Dict[str, Any]
     detected_intent: Optional[str] = None
     tools_executed: List[str] = []
+
+
+class WebhookEventOut(BaseModel):
+    id: str
+    event_type: str
+    sender_phone: Optional[str] = None
+    recipient_phone_id: Optional[str] = None
+    message_id: Optional[str] = None
+    message_body: Optional[str] = None
+    status: str
+    error_message: Optional[str] = None
+    raw_payload: Optional[Dict[str, Any]] = None
+    headers: Optional[Dict[str, Any]] = None
+    created_at: datetime
+
+    class Config:
+        from_attributes = True

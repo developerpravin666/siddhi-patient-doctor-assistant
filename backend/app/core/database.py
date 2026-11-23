@@ -365,6 +365,22 @@ async def init_db():
                         created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
                         updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
                     );
+
+                    CREATE TABLE IF NOT EXISTS public.webhook_events (
+                        id VARCHAR(36) PRIMARY KEY,
+                        event_type VARCHAR(50) DEFAULT 'message',
+                        sender_phone VARCHAR(30),
+                        recipient_phone_id VARCHAR(50),
+                        message_id VARCHAR(100),
+                        message_body TEXT,
+                        status VARCHAR(30) DEFAULT 'PROCESSED',
+                        error_message TEXT,
+                        raw_payload JSON,
+                        headers JSON,
+                        created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+                    );
+                    CREATE INDEX IF NOT EXISTS idx_webhook_events_created_at ON public.webhook_events (created_at DESC);
+                    CREATE INDEX IF NOT EXISTS idx_webhook_events_sender_phone ON public.webhook_events (sender_phone);
                 """
                 for p_stmt in public_ddl.split(";"):
                     p_cleaned = p_stmt.strip()

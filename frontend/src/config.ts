@@ -18,7 +18,7 @@
  * automatically read from here.
  */
 
-export const DEFAULT_API_URL = 'https://listed-impacts-extent-sen.trycloudflare.com'; // || 'http://localhost:8000';
+export const DEFAULT_API_URL = 'https://bucks-shared-poor-showcase.trycloudflare.com'; // || 'http://localhost:8000';
 
 export function getApiBaseUrl(): string {
   // 1. Runtime override check (from browser localStorage or window global)

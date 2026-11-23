@@ -18,6 +18,7 @@ import { DoctorForm } from './pages/DoctorForm';
 import { PatientForm } from './pages/PatientForm';
 import { SpecializationsManagement } from './pages/SpecializationsManagement';
 import { TenantForm } from './pages/TenantForm';
+import { WebhookEvents } from './pages/WebhookEvents';
 import { getStoredUser } from './api/client';
 import { ConfirmationProvider } from './context/ConfirmationContext';
 
@@ -230,6 +231,15 @@ export const App: React.FC = () => {
             element={
               <ProtectedRoute allowedRoles={['SUPER_ADMIN', 'CLINIC_ADMIN']}>
                 <WhatsAppConfigPage />
+              </ProtectedRoute>
+            }
+          />
+
+          <Route
+            path="webhook-events"
+            element={
+              <ProtectedRoute allowedRoles={['SUPER_ADMIN']}>
+                <WebhookEvents />
               </ProtectedRoute>
             }
           />

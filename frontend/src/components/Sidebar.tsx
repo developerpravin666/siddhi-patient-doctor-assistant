@@ -10,7 +10,8 @@ import {
   Clock,
   Building2,
   UserCog,
-  Stethoscope
+  Stethoscope,
+  Radio
 } from 'lucide-react';
 import { UserRole, AdminUser } from '../types';
 
@@ -23,6 +24,7 @@ export type NavTab =
   | 'doctors' 
   | 'patients' 
   | 'whatsapp-config'
+  | 'webhook-events'
   | 'settings';
 
 interface SidebarProps {
@@ -113,6 +115,15 @@ export const Sidebar: React.FC<SidebarProps> = ({
       icon: MessageSquare,
       roles: ['SUPER_ADMIN', 'CLINIC_ADMIN'],
       isVisible: userRole === 'SUPER_ADMIN' || userRole === 'CLINIC_ADMIN'
+    },
+    { 
+      id: 'webhook-events', 
+      path: '/webhook-events',
+      label: 'Webhook Stream', 
+      icon: Radio,
+      badge: 'Super Admin',
+      roles: ['SUPER_ADMIN'],
+      isVisible: userRole === 'SUPER_ADMIN'
     },
     { 
       id: 'settings', 

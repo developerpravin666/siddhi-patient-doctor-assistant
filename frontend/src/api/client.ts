@@ -1,5 +1,5 @@
 import axios from 'axios';
-import { Appointment, Doctor, Clinic, Patient, DashboardStats, AdminUser, Tenant, WhatsAppConfig, Specialization } from '../types';
+import { Appointment, Doctor, Clinic, Patient, DashboardStats, AdminUser, Tenant, WhatsAppConfig, Specialization, WebhookEvent } from '../types';
 import { API_BASE_URL, getApiBaseUrl } from '../config';
 
 export { API_BASE_URL, getApiBaseUrl };
@@ -437,6 +437,40 @@ export const simulateWhatsAppMessage = async (data: {
 
 export const resetWhatsAppSession = async (phoneNumber: string): Promise<void> => {
   await api.post('/webhook/reset-session', { phone_number: phoneNumber, message_text: '' });
+};
+
+// -----------------------------------------------------------------------------
+// Webhook Events API (SUPER_ADMIN Only)
+// -----------------------------------------------------------------------------
+export const getWebhookEvents = async (params?: {
+  search?: string;
+  status?: string;
+  event_type?: string;
+  sort_by?: string;
+  sort_dir?: 'asc' | 'desc';
+  page?: number;
+  page_size?: number;
+}): Promise<{ events: WebhookEvent[]; total: number }> => {
+  const res = await api.get('/api/v1/admin/webhook-events', { params });
+  const rawTotal = res.headers['x-total-count'] || res.headers['X-Total-Count'];
+  const total = rawTotal !== undefined && rawTotal !== null ? parseInt(rawTotal, 10) : res.data.length;
+  return {
+    events: res.data,
+    total: isNaN(total) ? res.data.length : total,
+  };
+};
+
+export const getWebhookEvent = async (id: string): Promise<WebhookEvent> => {
+  const res = await api.get(`/api/v1/admin/webhook-events/${id}`);
+  return res.data;
+};
+
+export const deleteWebhookEvent = async (id: string): Promise<void> => {
+  await api.delete(`/api/v1/admin/webhook-events/${id}`);
+};
+
+export const purgeWebhookEvents = async (): Promise<void> => {
+  await api.delete('/api/v1/admin/webhook-events');
 };
 
 export default api;

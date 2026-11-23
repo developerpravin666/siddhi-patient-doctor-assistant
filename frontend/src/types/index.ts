@@ -145,6 +145,20 @@ export interface ChatMessage {
   toolsExecuted?: string[];
 }
 
+export interface WebhookEvent {
+  id: string;
+  event_type: string;
+  sender_phone?: string | null;
+  recipient_phone_id?: string | null;
+  message_id?: string | null;
+  message_body?: string | null;
+  status: string;
+  error_message?: string | null;
+  raw_payload?: Record<string, any> | null;
+  headers?: Record<string, any> | null;
+  created_at: string;
+}
+
 export interface AppContextType {
   currentUser: AdminUser | null;
   userRole: UserRole;

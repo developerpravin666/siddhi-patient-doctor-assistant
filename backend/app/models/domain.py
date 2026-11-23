@@ -181,3 +181,24 @@ class AdminUser(Base):
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now, onupdate=utc_now)
+
+
+class WebhookEvent(Base):
+    """
+    Stores every incoming Meta WhatsApp Cloud API webhook event (messages, delivery/read statuses, errors)
+    for auditing, analytics, and debugging by Super Admin.
+    Stored globally in the public schema.
+    """
+    __tablename__ = "webhook_events"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=generate_uuid)
+    event_type: Mapped[str] = mapped_column(String(50), default="message", index=True)  # message, status, delivery, failed, etc.
+    sender_phone: Mapped[Optional[str]] = mapped_column(String(30), nullable=True, index=True)
+    recipient_phone_id: Mapped[Optional[str]] = mapped_column(String(50), nullable=True, index=True)
+    message_id: Mapped[Optional[str]] = mapped_column(String(100), nullable=True, index=True)
+    message_body: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    status: Mapped[str] = mapped_column(String(30), default="PROCESSED", index=True)  # PROCESSED, IGNORED, DUPLICATE, FAILED, STATUS_UPDATE
+    error_message: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    raw_payload: Mapped[Optional[Dict[str, Any]]] = mapped_column(JSON, nullable=True)
+    headers: Mapped[Optional[Dict[str, Any]]] = mapped_column(JSON, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now, index=True)
