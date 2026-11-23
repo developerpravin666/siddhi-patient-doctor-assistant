@@ -3,7 +3,7 @@ from typing import Dict, Any, Optional
 from fastapi import APIRouter, Query, Response, status, Request, HTTPException, BackgroundTasks
 from app.core.config import settings
 from app.core import security
-from app.core.database import AsyncSessionLocal, is_postgres
+from app.core.database import AsyncSessionLocal, is_postgres, sanitize_schema_name
 from app.models.domain import Clinic, Tenant
 from sqlalchemy import select, text
 from app.services.orchestration_service import orchestration_pipeline
@@ -99,6 +99,40 @@ async def save_webhook_event_record(
             logger.info(f"Persisted webhook event to DB: id={event.id}, type={event_type}, status={status_val}, sender={sender_phone}")
     except Exception as e:
         logger.error(f"Error persisting webhook event to database: {e}", exc_info=True)
+
+
+async def resolve_webhook_tenant_schema(recipient_phone_id: Optional[str]) -> str:
+    """
+    Resolves the target tenant schema for incoming webhook messages.
+    Searches active clinics matching the incoming phone_number_id, or defaults to the active tenant schema.
+    """
+    try:
+        async with AsyncSessionLocal() as session:
+            if is_postgres():
+                await session.execute(text('SET search_path TO public;'))
+                stmt = select(Tenant.schema_name).where(Tenant.status == "ACTIVE")
+                res = await session.execute(stmt)
+                schemas = [r[0] for r in res.fetchall() if r[0]]
+
+                if recipient_phone_id:
+                    for sch in schemas:
+                        safe_sch = sanitize_schema_name(sch)
+                        await session.execute(text(f'SET search_path TO "{safe_sch}", public;'))
+                        c_res = await session.execute(
+                            select(Clinic).where(Clinic.whatsapp_phone_number_id == recipient_phone_id)
+                        )
+                        if c_res.scalar_one_or_none():
+                            return safe_sch
+
+                if schemas:
+                    return sanitize_schema_name(schemas[0])
+
+                return "public"
+            else:
+                return "public"
+    except Exception as e:
+        logger.warning(f"Error resolving tenant schema for webhook message: {e}")
+        return "public"
 
 
 @router.post("/webhook")
@@ -255,12 +289,14 @@ async def receive_whatsapp_event(request: Request, background_tasks: BackgroundT
 
     if from_number and text_content:
         # 5. Offload to background worker to prevent WhatsApp timeout
+        tenant_sch = await resolve_webhook_tenant_schema(recipient_phone_id)
         background_tasks.add_task(
             orchestration_pipeline.process_user_message,
             phone_number=from_number,
             message_text=text_content,
             send_whatsapp_reply=True,
-            recipient_phone_number_id=recipient_phone_id
+            recipient_phone_number_id=recipient_phone_id,
+            tenant_schema=tenant_sch
         )
 
     return {"status": "queued"}

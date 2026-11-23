@@ -52,10 +52,32 @@ class OrchestrationPipeline:
 
         # 6. Send WhatsApp message if inbound from real webhook
         if send_whatsapp_reply:
+            eff_phone_id = recipient_phone_number_id or ''
+            eff_token = None
+            sch = updated_session.get("tenant_schema") or tenant_schema
+            if sch:
+                try:
+                    from app.core.database import AsyncSessionLocal, is_postgres
+                    from app.models.domain import Clinic
+                    from sqlalchemy import select, text
+                    async with AsyncSessionLocal() as dbs:
+                        if is_postgres():
+                            await dbs.execute(text(f'SET search_path TO "{sch}", public;'))
+                        c_res = await dbs.execute(select(Clinic).limit(1))
+                        c_obj = c_res.scalar_one_or_none()
+                        if c_obj:
+                            if not eff_phone_id and c_obj.whatsapp_phone_number_id:
+                                eff_phone_id = c_obj.whatsapp_phone_number_id
+                            if c_obj.whatsapp_access_token:
+                                eff_token = c_obj.whatsapp_access_token
+                except Exception as ex:
+                    logger.warning(f"Could not load custom credentials for schema {sch}: {ex}")
+
             await whatsapp_service.send_text_message(
                 recipient_phone=phone_number,
                 text=reply_text,
-                custom_phone_number_id=recipient_phone_number_id
+                custom_phone_number_id=eff_phone_id or None,
+                custom_access_token=eff_token or None
             )
 
         return reply_text, updated_session, executed_tools

@@ -177,13 +177,14 @@ class GeminiService:
         msg_clean = user_message.strip()
         msg_lower = msg_clean.lower()
 
-        # Dynamic Clinic & Doctor context from database
+        target_schema = session.get("tenant_schema") or "public"
         clinic_name = settings.DEFAULT_CLINIC_NAME
         clinic_address = settings.DEFAULT_CLINIC_ADDRESS
         clinic_phone = settings.DEFAULT_CLINIC_PHONE
         clinic_hours = "Monday – Saturday: 9:00 AM – 1:00 PM and 4:00 PM – 7:30 PM (Sundays Closed)"
         primary_doctor_name = settings.DEFAULT_DOCTOR_NAME
         primary_doctor_specialty = settings.DEFAULT_DOCTOR_SPECIALTY
+        custom_welcome_prompt = None
 
         try:
             from sqlalchemy import select, text
@@ -191,7 +192,7 @@ class GeminiService:
             from app.models.domain import Clinic, Doctor
             async with AsyncSessionLocal() as dbs:
                 if is_postgres():
-                    await dbs.execute(text('SET search_path TO "clinic_default", public;'))
+                    await dbs.execute(text(f'SET search_path TO "{target_schema}", public;'))
                 c_res = await dbs.execute(select(Clinic).limit(1))
                 c_obj = c_res.scalar_one_or_none()
                 if c_obj:
@@ -201,6 +202,8 @@ class GeminiService:
                         clinic_phone = c_obj.phone
                     if c_obj.consultation_hours:
                         clinic_hours = c_obj.consultation_hours
+                    if c_obj.bot_config and isinstance(c_obj.bot_config, dict):
+                        custom_welcome_prompt = c_obj.bot_config.get("welcome_message")
 
                 d_res = await dbs.execute(select(Doctor).where(Doctor.is_active == True).limit(5))
                 doc_list = d_res.scalars().all()
@@ -284,11 +287,14 @@ class GeminiService:
             if any(k in msg_lower for k in booking_intent_keywords) or not session.get("greeted"):
                 session["greeted"] = True
                 session["awaiting_name"] = True
-                reply = (
-                    f"Hello! 👋 Welcome to *{clinic_name}*.\n\n"
-                    f"I would be happy to help you schedule an appointment with {primary_doctor_name}.\n\n"
-                    "May I please have your *full name*?"
-                )
+                if custom_welcome_prompt:
+                    reply = f"{custom_welcome_prompt}\n\nMay I please have your *full name*?"
+                else:
+                    reply = (
+                        f"Hello! 👋 Welcome to *{clinic_name}*.\n\n"
+                        f"I would be happy to help you schedule an appointment with {primary_doctor_name}.\n\n"
+                        "May I please have your *full name*?"
+                    )
                 return reply, executed_tools, session
 
             # Otherwise treat direct input as name
@@ -312,7 +318,7 @@ class GeminiService:
 
                 # Invoke tool: get_available_slots
                 executed_tools.append("get_available_slots")
-                slots_res = await get_available_slots("tomorrow")
+                slots_res = await get_available_slots("tomorrow", tenant_schema=target_schema)
                 slots = slots_res.get("available_slots", [])
                 target_date = slots_res.get("date")
                 session["offered_slots"] = slots
@@ -374,7 +380,8 @@ class GeminiService:
                     patient_name=session["patient_name"],
                     mobile_number=session["mobile_number"],
                     date=target_date,
-                    time_slot=chosen_slot
+                    time_slot=chosen_slot,
+                    tenant_schema=target_schema
                 )
 
                 try:
