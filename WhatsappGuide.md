@@ -94,7 +94,7 @@ Before starting, ensure you have:
    - **WhatsApp Business Account ID (WABA ID)** (e.g., `104589201948203`).
 5. **Add Test Recipient Numbers (Required for Sandbox)**:
    - Under the **To** field, click the recipient dropdown &rarr; click **Manage phone number list**.
-   - Add your personal mobile number (including country code, e.g., `919823012345`).
+   - Add your personal mobile number (including country code, e.g., `919009368666`).
    - Meta will send a 6-digit verification code to that WhatsApp number. Enter the code to verify.
    > **Important Note:** In sandbox mode, Meta Cloud API can ONLY send messages to verified test numbers.
 
@@ -203,7 +203,7 @@ The automated appointment reminder scheduler uses Meta's approved message templa
 
 ### Test A: In-Portal Live Test Ping
 1. On the WhatsApp Configuration page, scroll down to **Test WhatsApp Connection & Message Dispatch**.
-2. Enter your mobile number with country code (e.g. `919823012345`).
+2. Enter your mobile number with country code (e.g. `919009368666`).
 3. Click **Send Live Test Ping**.
 4. Check the result:
    - **Success**: You will receive a WhatsApp message on your phone confirming connection.

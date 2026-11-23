@@ -12,7 +12,8 @@ import {
   Copy,
   Check,
   ExternalLink,
-  Radio
+  Radio,
+  Sparkles
 } from 'lucide-react';
 import { useOutletContext } from 'react-router-dom';
 import { WhatsAppConfig, Doctor, AdminUser, UserRole, AppContextType } from '../types';
@@ -54,7 +55,7 @@ export const WhatsAppConfigPage: React.FC<WhatsAppConfigProps> = (props) => {
   const [enableAiBot, setEnableAiBot] = useState(true);
 
   // Testing states
-  const [testNumber, setTestNumber] = useState('919823012345');
+  const [testNumber, setTestNumber] = useState('919009368666');
   const [testingConnection, setTestingConnection] = useState(false);
   const [testResult, setTestResult] = useState<{ status: string; message: string; is_live?: boolean } | null>(null);
   const [copiedField, setCopiedField] = useState<string | null>(null);
@@ -151,7 +152,7 @@ export const WhatsAppConfigPage: React.FC<WhatsAppConfigProps> = (props) => {
     }
   };
 
-  const handleTestConnection = async () => {
+  const handleTestConnection = async (useTemplate: boolean = false) => {
     if (!testNumber.trim() || testNumber.trim().length < 10) {
       showToast('Please enter a valid 10-digit mobile number to test WhatsApp message delivery', 'error');
       return;
@@ -159,7 +160,7 @@ export const WhatsAppConfigPage: React.FC<WhatsAppConfigProps> = (props) => {
     try {
       setTestingConnection(true);
       setTestResult(null);
-      const res = await testWhatsAppConnection(testNumber.trim());
+      const res = await testWhatsAppConnection(testNumber.trim(), useTemplate);
       setTestResult(res);
       if (res.status === 'SUCCESS') {
         showToast(res.message || 'Test WhatsApp message dispatched successfully!');
@@ -189,11 +190,10 @@ export const WhatsAppConfigPage: React.FC<WhatsAppConfigProps> = (props) => {
       {/* Toast Alert */}
       {toastMessage && (
         <div
-          className={`p-3.5 rounded-xl border text-xs font-semibold flex items-center justify-between transition shadow-sm ${
-            toastMessage.type === 'success'
+          className={`p-3.5 rounded-xl border text-xs font-semibold flex items-center justify-between transition shadow-sm ${toastMessage.type === 'success'
               ? 'bg-emerald-50 border-emerald-200 text-emerald-800'
               : 'bg-rose-50 border-rose-200 text-rose-800'
-          }`}
+            }`}
         >
           <span>{toastMessage.type === 'success' ? '✓ ' : '✕ '} {toastMessage.text}</span>
           <button onClick={() => setToastMessage(null)} className="font-bold opacity-70 hover:opacity-100">
@@ -216,11 +216,10 @@ export const WhatsAppConfigPage: React.FC<WhatsAppConfigProps> = (props) => {
 
         <div className="flex items-center gap-2">
           <span
-            className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold border shadow-sm ${
-              config?.is_live
+            className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold border shadow-sm ${config?.is_live
                 ? 'bg-emerald-50 text-emerald-800 border-emerald-200'
                 : 'bg-amber-50 text-amber-800 border-amber-200'
-            }`}
+              }`}
           >
             {config?.is_live ? (
               <>
@@ -265,11 +264,10 @@ export const WhatsAppConfigPage: React.FC<WhatsAppConfigProps> = (props) => {
                     onChange={(e) => setPhoneNumberId(e.target.value)}
                     placeholder="e.g. 524189020786543"
                     disabled={!canEdit}
-                    className={`w-full px-3 py-2 rounded-xl border font-mono text-xs focus:outline-none focus:ring-2 ${
-                      formErrors.whatsapp_phone_number_id
+                    className={`w-full px-3 py-2 rounded-xl border font-mono text-xs focus:outline-none focus:ring-2 ${formErrors.whatsapp_phone_number_id
                         ? 'border-rose-400 focus:ring-rose-500/20'
                         : 'border-slate-200 focus:ring-brand-500/20'
-                    }`}
+                      }`}
                   />
                   {formErrors.whatsapp_phone_number_id && (
                     <p className="text-[11px] text-rose-600 mt-1">{formErrors.whatsapp_phone_number_id}</p>
@@ -299,11 +297,10 @@ export const WhatsAppConfigPage: React.FC<WhatsAppConfigProps> = (props) => {
                   onChange={(e) => setAccessToken(e.target.value)}
                   placeholder="EAAG... (Meta System User Token with whatsapp_business_messaging)"
                   disabled={!canEdit}
-                  className={`w-full px-3 py-2 rounded-xl border font-mono text-xs focus:outline-none focus:ring-2 ${
-                    formErrors.whatsapp_access_token
+                  className={`w-full px-3 py-2 rounded-xl border font-mono text-xs focus:outline-none focus:ring-2 ${formErrors.whatsapp_access_token
                       ? 'border-rose-400 focus:ring-rose-500/20'
                       : 'border-slate-200 focus:ring-brand-500/20'
-                  }`}
+                    }`}
                 />
                 {formErrors.whatsapp_access_token && (
                   <p className="text-[11px] text-rose-600 mt-1">{formErrors.whatsapp_access_token}</p>
@@ -529,30 +526,52 @@ export const WhatsAppConfigPage: React.FC<WhatsAppConfigProps> = (props) => {
                 type="tel"
                 value={testNumber}
                 onChange={(e) => setTestNumber(e.target.value.replace(/[^0-9]/g, ''))}
-                placeholder="Country code + phone (e.g. 919823012345)"
+                placeholder="Country code + phone (e.g. 919009368666)"
                 className="w-full sm:w-72 px-3 py-2 rounded-xl border border-slate-200 font-mono text-xs focus:outline-none focus:ring-2 focus:ring-brand-500/20"
               />
               <button
                 type="button"
-                onClick={handleTestConnection}
+                onClick={() => handleTestConnection(false)}
                 disabled={testingConnection}
                 className="w-full sm:w-auto px-4 py-2 rounded-xl bg-slate-900 hover:bg-slate-800 text-white font-bold transition flex items-center justify-center gap-1.5 disabled:opacity-50"
               >
                 <Send className="w-3.5 h-3.5" />
-                {testingConnection ? 'Sending...' : 'Send Live Test Ping'}
+                {testingConnection ? 'Sending...' : 'Send Text Ping'}
               </button>
+              <button
+                type="button"
+                onClick={() => handleTestConnection(true)}
+                disabled={testingConnection}
+                title="Bypasses 24-hour customer service window rule using Meta pre-approved hello_world template"
+                className="w-full sm:w-auto px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold transition flex items-center justify-center gap-1.5 disabled:opacity-50"
+              >
+                <Sparkles className="w-3.5 h-3.5" />
+                {testingConnection ? 'Sending...' : 'Send hello_world Template (Bypasses 24h Window)'}
+              </button>
+            </div>
+
+            {/* 24-Hour Window Info Banner */}
+            <div className="p-3 rounded-xl bg-amber-50/80 border border-amber-200/70 text-amber-900 text-[11px] space-y-1">
+              <p className="font-bold flex items-center gap-1.5">
+                <AlertCircle className="w-3.5 h-3.5 text-amber-600 shrink-0" />
+                Meta Anti-Spam Policy (24-Hour Customer Service Window):
+              </p>
+              <p className="text-amber-800 leading-relaxed">
+                • <strong>Free-form Text Messages:</strong> Meta only delivers regular text messages if the recipient has messaged the business within the last 24 hours. If not received, send <strong>"Hi"</strong> from your phone to the clinic's WhatsApp number to open the window.
+                <br />
+                • <strong>Template Messages:</strong> Use the <strong>hello_world Template</strong> button to bypass the 24-hour window unconditionally and verify instant live message delivery on your phone.
+              </p>
             </div>
 
             {/* Test Execution Result Box */}
             {testResult && (
               <div
-                className={`p-3.5 rounded-xl border flex items-start gap-2.5 text-xs transition-all ${
-                  testResult.status === 'SUCCESS'
+                className={`p-3.5 rounded-xl border flex items-start gap-2.5 text-xs transition-all ${testResult.status === 'SUCCESS'
                     ? testResult.is_live
                       ? 'bg-emerald-50 border-emerald-200 text-emerald-900'
                       : 'bg-amber-50 border-amber-200 text-amber-900'
                     : 'bg-rose-50 border-rose-200 text-rose-900'
-                }`}
+                  }`}
               >
                 {testResult.status === 'SUCCESS' ? (
                   testResult.is_live ? (

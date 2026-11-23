@@ -331,13 +331,14 @@ class WhatsAppConfigOut(BaseModel):
 class WhatsAppTestRequest(BaseModel):
     test_mobile_number: str
     message: Optional[str] = "Hello from Siddhi Appointment Assistant! This is a test message to confirm your WhatsApp Business API configuration."
+    use_template: bool = Field(False, description="Whether to dispatch pre-approved hello_world template to bypass 24h window")
 
 
 # -----------------------------------------------------------------------------
 # WhatsApp Webhook & Simulator Schemas
 # -----------------------------------------------------------------------------
 class SimulatorChatRequest(BaseModel):
-    phone_number: str = "919823012345"
+    phone_number: str = "919009368666"
     message_text: str
     clinic_id: Optional[str] = None
 

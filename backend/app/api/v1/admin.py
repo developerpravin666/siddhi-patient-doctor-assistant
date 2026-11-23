@@ -1434,22 +1434,35 @@ async def test_whatsapp_connection(
         f"Your Meta WhatsApp Cloud API credentials are live and ready for patient booking interactions."
     )
 
-    success = await wa_svc.send_text_message(
-        payload.test_mobile_number.strip(),
-        test_msg
-    )
+    if payload.use_template:
+        success = await wa_svc.send_hello_world_template(
+            payload.test_mobile_number.strip()
+        )
+        dispatch_type = "Pre-approved Template ('hello_world')"
+    else:
+        success = await wa_svc.send_text_message(
+            payload.test_mobile_number.strip(),
+            test_msg
+        )
+        dispatch_type = "Standard Text Message"
 
     if success:
         is_simulated = not wa_svc._is_configured()
+        msg_text = (
+            f"Live test {dispatch_type} dispatched successfully via Meta WhatsApp Cloud API!"
+            if not is_simulated else
+            f"Message processed successfully in Simulated/Sandbox mode."
+        )
+        if not is_simulated and not payload.use_template:
+            msg_text += (
+                " NOTE: Free-form text messages require the patient to have messaged the business within the last 24 hours. "
+                "If not received on WhatsApp, send 'Hi' from your mobile phone to the clinic's WhatsApp number to open the 24-hour window, or select the 'hello_world' template option."
+            )
         return {
             "status": "SUCCESS",
             "mobile_number": payload.test_mobile_number,
             "is_live": not is_simulated,
-            "message": (
-                "Live test message dispatched successfully via Meta WhatsApp Cloud API!"
-                if not is_simulated else
-                "Message processed successfully in Simulated/Sandbox mode. To send live WhatsApp messages, configure your Phone Number ID and Permanent Access Token above."
-            )
+            "message": msg_text
         }
     else:
         err_detail = wa_svc.last_error or "Could not dispatch message. Verify Phone Number ID, Access Token, and recipient phone number."

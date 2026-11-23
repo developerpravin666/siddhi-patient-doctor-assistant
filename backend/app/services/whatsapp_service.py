@@ -84,9 +84,21 @@ class WhatsAppService:
                 else:
                     try:
                         err_json = res.json()
-                        err_msg = err_json.get("error", {}).get("message", res.text)
-                        err_code = err_json.get("error", {}).get("code", res.status_code)
-                        self.last_error = f"Meta API Error ({err_code}): {err_msg}"
+                        err_obj = err_json.get("error", {})
+                        err_msg = err_obj.get("message", res.text)
+                        err_code = err_obj.get("code", res.status_code)
+                        err_subcode = err_obj.get("error_subcode")
+                        
+                        hint = ""
+                        if err_code == 190:
+                            hint = " — The Meta Access Token is expired, invalid, or revoked. Please generate a fresh token (or a Permanent System User Token with 'whatsapp_business_messaging' permission) from Meta Business Manager / App Dashboard and update it in WhatsApp API & Bot settings."
+                        elif err_code == 131030:
+                            hint = " — Meta Sandbox restriction: Recipient phone number is not in your allowed list. Add and verify this number in Meta App Dashboard > WhatsApp > API Setup > Manage phone number list."
+                        elif err_code == 100:
+                            hint = " — Invalid parameter. Verify Phone Number ID, recipient number format (with country code, e.g. 919876543210), and payload."
+                        
+                        subcode_str = f", subcode: {err_subcode}" if err_subcode else ""
+                        self.last_error = f"Meta API Error ({err_code}{subcode_str}): {err_msg}{hint}"
                     except Exception:
                         self.last_error = f"Meta API returned status {res.status_code}: {res.text}"
                     logger.error(f"WhatsApp API error ({res.status_code}): {self.last_error}")
@@ -188,6 +200,74 @@ class WhatsAppService:
                 custom_phone_number_id=pid,
                 custom_access_token=tok
             )
+
+
+    async def send_hello_world_template(
+        self,
+        recipient_phone: str,
+        custom_phone_number_id: Optional[str] = None,
+        custom_access_token: Optional[str] = None
+    ) -> bool:
+        """
+        Sends Meta's pre-approved 'hello_world' default template.
+        Unlike free-form text messages, approved templates bypass Meta's 24-hour customer window rule!
+        """
+        self.last_error = None
+        clean_phone = "".join(filter(str.isdigit, recipient_phone))
+        masked = mask_phone_number(clean_phone)
+        logger.info(f"Sending Meta pre-approved 'hello_world' template to {masked}")
+
+        pid = custom_phone_number_id or self.phone_number_id
+        tok = custom_access_token or self.access_token
+        base_url = f"https://graph.facebook.com/{self.api_version}/{pid}" if pid else self.base_url
+        headers = {
+            "Authorization": f"Bearer {tok}",
+            "Content-Type": "application/json"
+        }
+
+        if not pid or not tok or pid.startswith("12345"):
+            logger.info(f"[SIMULATED HELLO_WORLD TEMPLATE to {masked}]")
+            return True
+
+        payload = {
+            "messaging_product": "whatsapp",
+            "to": clean_phone,
+            "type": "template",
+            "template": {
+                "name": "hello_world",
+                "language": {
+                    "code": "en_US"
+                }
+            }
+        }
+
+        try:
+            async with httpx.AsyncClient(timeout=10.0) as client:
+                res = await client.post(
+                    f"{base_url}/messages",
+                    headers=headers,
+                    json=payload
+                )
+                if res.status_code in (200, 201):
+                    logger.info(f"Successfully delivered hello_world template to {masked}")
+                    return True
+                else:
+                    try:
+                        err_json = res.json()
+                        err_obj = err_json.get("error", {})
+                        err_msg = err_obj.get("message", res.text)
+                        err_code = err_obj.get("code", res.status_code)
+                        err_subcode = err_obj.get("error_subcode")
+                        subcode_str = f", subcode: {err_subcode}" if err_subcode else ""
+                        self.last_error = f"Meta API Error ({err_code}{subcode_str}): {err_msg}"
+                    except Exception:
+                        self.last_error = f"Meta API returned status {res.status_code}: {res.text}"
+                    logger.error(f"WhatsApp template error ({res.status_code}): {self.last_error}")
+                    return False
+        except Exception as e:
+            self.last_error = f"Network/Connection error: {str(e)}"
+            logger.error(f"Failed to send WhatsApp template to {masked}: {e}")
+            return False
 
 
 whatsapp_service = WhatsAppService()

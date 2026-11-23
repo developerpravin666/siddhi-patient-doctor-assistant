@@ -1,11 +1,11 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { 
-  Send, 
-  RotateCcw, 
-  Sparkles, 
-  ShieldAlert, 
-  PhoneCall, 
-  MapPin, 
+import {
+  Send,
+  RotateCcw,
+  Sparkles,
+  ShieldAlert,
+  PhoneCall,
+  MapPin,
   CheckCheck,
   Zap
 } from 'lucide-react';
@@ -13,7 +13,7 @@ import { simulateWhatsAppMessage, resetWhatsAppSession } from '../api/client';
 import { ChatMessage } from '../types';
 
 export const WhatsAppSimulator: React.FC = () => {
-  const [phoneNumber] = useState('919823012345');
+  const [phoneNumber] = useState('919009368666');
   const [inputText, setInputText] = useState('');
   const [messages, setMessages] = useState<ChatMessage[]>([
     {
@@ -190,11 +190,10 @@ export const WhatsAppSimulator: React.FC = () => {
                     )}
 
                     <div
-                      className={`max-w-[85%] rounded-2xl px-3.5 py-2.5 shadow-sm text-xs text-slate-800 leading-relaxed ${
-                        isUser
+                      className={`max-w-[85%] rounded-2xl px-3.5 py-2.5 shadow-sm text-xs text-slate-800 leading-relaxed ${isUser
                           ? 'bg-[#DCF8C6] rounded-tr-none'
                           : 'bg-white rounded-tl-none border border-slate-100'
-                      }`}
+                        }`}
                     >
                       <div className="whitespace-pre-wrap">{formatWhatsAppText(m.text)}</div>
                       <div className="text-[9px] text-slate-400 mt-1 flex items-center justify-end gap-1">
@@ -276,10 +275,10 @@ export const WhatsAppSimulator: React.FC = () => {
                   Step 2: "Sneha Kulkarni"
                 </button>
                 <button
-                  onClick={() => handleScenario("9823012345")}
+                  onClick={() => handleScenario("9009368666")}
                   className="px-2.5 py-1 rounded-lg bg-white border border-slate-200 text-slate-700 hover:border-brand-500 hover:text-brand-600 transition"
                 >
-                  Step 3: "9823012345"
+                  Step 3: "9009368666"
                 </button>
                 <button
                   onClick={() => handleScenario("Option 2 please")}

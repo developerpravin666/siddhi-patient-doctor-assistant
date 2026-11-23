@@ -165,13 +165,33 @@ async def receive_whatsapp_event(request: Request, background_tasks: BackgroundT
             st_val = st.get("status", "unknown")
             rec_id = st.get("recipient_id")
             msg_id = st.get("id")
+
+            # Extract detailed error if delivery failed
+            err_list = st.get("errors", [])
+            err_msg = None
+            status_val = "STATUS_UPDATE"
+            if err_list:
+                err_item = err_list[0]
+                err_code = err_item.get("code")
+                err_title = err_item.get("title") or err_item.get("message")
+                err_details = err_item.get("error_data", {}).get("details")
+                err_msg = f"Meta Error ({err_code}): {err_title}"
+                if err_details:
+                    err_msg += f" — {err_details}"
+                if st_val == "failed":
+                    status_val = "FAILED"
+            elif st_val == "failed":
+                status_val = "FAILED"
+                err_msg = "Delivery failed by Meta"
+
             await save_webhook_event_record(
                 event_type=f"status_{st_val}",
-                status_val="STATUS_UPDATE",
+                status_val=status_val,
                 sender_phone=rec_id,
                 recipient_phone_id=recipient_phone_id,
                 message_id=msg_id,
                 message_body=f"Message status: {st_val}",
+                error_message=err_msg,
                 raw_payload=payload,
                 headers=req_headers
             )
