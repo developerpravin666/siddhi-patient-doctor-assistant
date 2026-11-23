@@ -84,10 +84,96 @@ class DatabaseService:
                 logger.error(f"Error seeding initial super admin account: {e}")
 
     @staticmethod
-    async def get_booked_slots_for_date(date: str, doctor_id: Optional[str] = None, tenant_schema: str = "clinic_default") -> List[str]:
+    async def resolve_schema(tenant_schema: str = "public") -> str:
+        """
+        Resolves schema name safely. If 'public' is requested but active tenants exist,
+        resolves to the primary active tenant schema to ensure multi-tenant clinical data is reached.
+        """
+        safe_schema = sanitize_schema_name(tenant_schema) if tenant_schema else "public"
+        if safe_schema == "public" and is_postgres():
+            try:
+                async with AsyncSessionLocal() as session:
+                    await session.execute(text('SET search_path TO public;'))
+                    t_stmt = select(Tenant.schema_name).where(Tenant.status == "ACTIVE").limit(1)
+                    t_res = await session.execute(t_stmt)
+                    active_sch = t_res.scalar_one_or_none()
+                    if active_sch:
+                        return sanitize_schema_name(active_sch)
+            except Exception:
+                pass
+        return safe_schema
+
+    @staticmethod
+    async def get_clinic_details(tenant_schema: str = "public") -> Dict[str, Any]:
+        """
+        Retrieves real-time clinic profile, consultation hours, and bot configuration from database.
+        """
+        safe_schema = await DatabaseService.resolve_schema(tenant_schema)
+        async with AsyncSessionLocal() as session:
+            try:
+                if is_postgres():
+                    await session.execute(text(f'SET search_path TO "{safe_schema}", public;'))
+                stmt = select(Clinic).limit(1)
+                res = await session.execute(stmt)
+                c = res.scalar_one_or_none()
+                if c:
+                    return {
+                        "id": c.id,
+                        "name": c.name or settings.DEFAULT_CLINIC_NAME,
+                        "address": c.address or settings.DEFAULT_CLINIC_ADDRESS,
+                        "phone": c.phone or settings.DEFAULT_CLINIC_PHONE,
+                        "timezone": c.timezone or settings.DEFAULT_CLINIC_TIMEZONE,
+                        "consultation_hours": c.consultation_hours or "Monday – Saturday: 9:00 AM – 1:00 PM and 4:00 PM – 7:30 PM",
+                        "bot_config": c.bot_config or {}
+                    }
+            except Exception as e:
+                logger.warning(f"Error fetching clinic details from schema '{safe_schema}': {e}")
+
+        return {
+            "id": "default",
+            "name": settings.DEFAULT_CLINIC_NAME,
+            "address": settings.DEFAULT_CLINIC_ADDRESS,
+            "phone": settings.DEFAULT_CLINIC_PHONE,
+            "timezone": settings.DEFAULT_CLINIC_TIMEZONE,
+            "consultation_hours": "Monday – Saturday: 9:00 AM – 1:00 PM and 4:00 PM – 7:30 PM",
+            "bot_config": {}
+        }
+
+    @staticmethod
+    async def get_active_doctors(tenant_schema: str = "public") -> List[Dict[str, Any]]:
+        """
+        Retrieves all active doctors with specialties and schedule parameters from database.
+        """
+        safe_schema = await DatabaseService.resolve_schema(tenant_schema)
+        async with AsyncSessionLocal() as session:
+            try:
+                if is_postgres():
+                    await session.execute(text(f'SET search_path TO "{safe_schema}", public;'))
+                stmt = select(Doctor).where(Doctor.is_active == True).order_by(Doctor.name)
+                res = await session.execute(stmt)
+                doctors = res.scalars().all()
+                return [
+                    {
+                        "id": d.id,
+                        "name": d.name,
+                        "specialty": d.specialty or "General Physician",
+                        "available_days": d.available_days or "Monday - Saturday",
+                        "morning_slots": d.morning_slots,
+                        "evening_slots": d.evening_slots,
+                        "slot_duration_minutes": d.slot_duration_minutes or 30
+                    }
+                    for d in doctors
+                ]
+            except Exception as e:
+                logger.warning(f"Error fetching doctors from schema '{safe_schema}': {e}")
+                return []
+
+    @staticmethod
+    async def get_booked_slots_for_date(date: str, doctor_id: Optional[str] = None, tenant_schema: str = "public") -> List[str]:
+        safe_schema = await DatabaseService.resolve_schema(tenant_schema)
         async with AsyncSessionLocal() as session:
             if is_postgres():
-                await session.execute(text(f'SET search_path TO "{tenant_schema}", public;'))
+                await session.execute(text(f'SET search_path TO "{safe_schema}", public;'))
             stmt = select(Appointment.time_slot).where(
                 and_(
                     Appointment.appointment_date == date,
@@ -100,12 +186,14 @@ class DatabaseService:
             return [row[0] for row in result.all()]
 
     @staticmethod
-    async def create_appointment(data: Dict[str, Any], tenant_schema: str = "clinic_default") -> Dict[str, Any]:
+    async def create_appointment(data: Dict[str, Any], tenant_schema: str = "public") -> Dict[str, Any]:
+        safe_schema = await DatabaseService.resolve_schema(tenant_schema)
         async with AsyncSessionLocal() as session:
             try:
                 if is_postgres():
-                    await session.execute(text(f'SET search_path TO "{tenant_schema}", public;'))
-                # Retrieve clinic and doctor for this tenant schema
+                    await session.execute(text(f'SET search_path TO "{safe_schema}", public;'))
+
+                # 1. Retrieve clinic and doctor for this tenant schema
                 clinic_id = data.get("clinic_id")
                 clinic = None
                 if clinic_id:
@@ -135,27 +223,53 @@ class DatabaseService:
 
                 doctor_name = doctor.name if doctor else settings.DEFAULT_DOCTOR_NAME
 
-                # Parse UTC datetime
+                # 2. Concurrency Race Condition Check (Prevent double-booking)
+                clash_stmt = select(Appointment).where(
+                    and_(
+                        Appointment.doctor_id == doctor_id,
+                        Appointment.appointment_date == data["date"],
+                        Appointment.time_slot == data["time_slot"],
+                        Appointment.status.in_(["CONFIRMED", "COMPLETED"])
+                    )
+                )
+                existing_clash = (await session.execute(clash_stmt)).scalar_one_or_none()
+                if existing_clash:
+                    return {
+                        "status": "SLOT_TAKEN",
+                        "error": f"The slot {data['time_slot']} on {data['date']} was just booked by another patient. Please choose another slot."
+                    }
+
+                # 3. Parse UTC datetime
                 utc_dt = DatabaseService.parse_slot_to_utc(
                     data["date"],
                     data["time_slot"],
                     tz_name=tz_name
                 )
 
-                # Ensure patient record exists within this tenant schema
+                # 4. Ensure patient record exists and address is updated within this tenant schema
                 patient_stmt = select(Patient).where(
                     Patient.mobile_number == data["mobile_number"].strip()
                 )
                 patient_res = await session.execute(patient_stmt)
                 patient = patient_res.scalar_one_or_none()
+
+                address_val = data.get("address")
+                clean_address = address_val.strip() if (address_val and address_val.lower() != "skip") else None
+
                 if not patient:
                     patient = Patient(
                         full_name=data["patient_name"].strip(),
-                        mobile_number=data["mobile_number"].strip()
+                        mobile_number=data["mobile_number"].strip(),
+                        address=clean_address
                     )
                     session.add(patient)
                     await session.flush()
+                else:
+                    patient.full_name = data["patient_name"].strip()
+                    if clean_address:
+                        patient.address = clean_address
 
+                # 5. Create new confirmed appointment
                 new_appointment = Appointment(
                     clinic_id=clinic_id,
                     doctor_id=doctor_id,
@@ -174,8 +288,8 @@ class DatabaseService:
                 session.add(new_appointment)
                 await session.flush()
                 await session.commit()
+
                 if is_postgres():
-                    safe_schema = sanitize_schema_name(tenant_schema)
                     await session.execute(text(f'SET search_path TO "{safe_schema}", public;'))
                 try:
                     await session.refresh(new_appointment)
@@ -183,6 +297,7 @@ class DatabaseService:
                     pass
 
                 return {
+                    "status": "SUCCESS",
                     "id": new_appointment.id,
                     "patient_name": new_appointment.patient_name,
                     "mobile_number": new_appointment.mobile_number,
@@ -194,6 +309,10 @@ class DatabaseService:
                     "status": new_appointment.status,
                     "appointment_datetime": new_appointment.appointment_datetime.isoformat()
                 }
+            except Exception as e:
+                await session.rollback()
+                logger.error(f"Failed to create appointment in schema '{safe_schema}': {e}")
+                raise e
             except Exception as e:
                 await session.rollback()
                 logger.error(f"Failed to create appointment: {e}")

@@ -26,6 +26,7 @@ def create_engine_instance(db_url: str):
             "pool_timeout": settings.DB_POOL_TIMEOUT,
             "pool_recycle": settings.DB_POOL_RECYCLE,
             "pool_pre_ping": True,  # Auto-reconnect broken/stale connections
+            "connect_args": {"timeout": 3},
         })
 
     return create_async_engine(db_url, **engine_kwargs)
@@ -61,7 +62,9 @@ def sanitize_schema_name(name: str) -> str:
     """
     Sanitizes schema name to a safe PostgreSQL identifier (lowercase, alphanumeric + underscore).
     """
-    cleaned = re.sub(r'[^a-zA-Z0-9_]', '_', name.strip().lower())
+    cleaned = re.sub(r'[^a-zA-Z0-9_]', '_', (name or "public").strip().lower())
+    if cleaned == "public":
+        return "public"
     if not (cleaned.startswith("clinic_") or cleaned.startswith("tenant_")):
         cleaned = f"clinic_{cleaned}"
     # PostgreSQL schema identifier limit is 63 characters

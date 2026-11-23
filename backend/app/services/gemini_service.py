@@ -6,6 +6,7 @@ from google.genai import types
 from app.core.config import settings
 from app.tools.tool_registry import TOOL_DISPATCHER
 from app.tools.appointment_tools import get_available_slots, book_appointment
+from app.services.database_service import db
 
 logger = logging.getLogger("gemini_service")
 
@@ -75,102 +76,28 @@ class GeminiService:
         session_state: Dict[str, Any]
     ) -> Tuple[str, List[str], Dict[str, Any]]:
         """
-        Executes a conversation turn with Gemini Function Calling.
-        Returns: (assistant_reply, executed_tool_names, updated_session_state)
+        Executes a conversation turn driving the 5-step Patient Appointment State Machine
+        with real-time database lookups for clinic profile, doctors, available slots,
+        double-booking race-condition prevention, and instant database persistence.
         """
-        executed_tools: List[str] = []
-        client = self._get_client()
+        return await self._conversational_state_machine(user_message, session_state)
 
-        if client:
-            try:
-                # Convert history to format compatible with google-genai
-                formatted_contents = []
-                for h in history:
-                    role = h.get("role", "user")
-                    parts = h.get("parts", [])
-                    formatted_parts = []
-                    for p in parts:
-                        if isinstance(p, str):
-                            formatted_parts.append(types.Part.from_text(text=p))
-                    if formatted_parts:
-                        formatted_contents.append(types.Content(role=role, parts=formatted_parts))
-
-                # Add current user message
-                formatted_contents.append(
-                    types.Content(role="user", parts=[types.Part.from_text(text=user_message)])
-                )
-
-                config = types.GenerateContentConfig(
-                    system_instruction=SYSTEM_INSTRUCTION,
-                    temperature=0.2,
-                    tools=[get_available_slots, book_appointment]
-                )
-
-                response = client.models.generate_content(
-                    model=settings.GEMINI_MODEL,
-                    contents=formatted_contents,
-                    config=config
-                )
-
-                # Process any function calls
-                while response.function_calls:
-                    for call in response.function_calls:
-                        tool_name = call.name
-                        tool_args = call.args or {}
-                        executed_tools.append(tool_name)
-                        logger.info(f"Gemini invoked tool: {tool_name} with args: {tool_args}")
-
-                        # Execute tool
-                        tool_fn = TOOL_DISPATCHER.get(tool_name)
-                        if tool_fn:
-                            if "tenant_schema" not in tool_args and session_state.get("tenant_schema"):
-                                tool_args["tenant_schema"] = session_state["tenant_schema"]
-                            tool_result = await tool_fn(**tool_args)
-                        else:
-                            tool_result = {"error": f"Tool {tool_name} not found"}
-
-                        if tool_name == "book_appointment" and tool_result.get("status") == "SUCCESS":
-                            session_state["appointment_booked"] = True
-                            session_state["appointment_id"] = tool_result.get("appointment_id")
-                        elif tool_name == "get_available_slots":
-                            session_state["offered_slots"] = tool_result.get("available_slots", [])
-                            session_state["selected_date"] = tool_result.get("date")
-
-                        # Send tool output back to model
-                        response = client.models.generate_content(
-                            model=settings.GEMINI_MODEL,
-                            contents=[
-                                types.Content(
-                                    role="tool",
-                                    parts=[
-                                        types.Part.from_function_response(
-                                            name=tool_name,
-                                            response={"result": tool_result}
-                                        )
-                                    ]
-                                )
-                            ],
-                            config=config
-                        )
-
-                reply_text = response.text if response.text else "Thank you for reaching out to Dr. Siddhi Patidar's Clinic. How may I assist you?"
-                return reply_text.strip(), executed_tools, session_state
-
-            except Exception as e:
-                logger.error(f"Error calling Gemini API: {e}. Falling back to rule-based receptionist engine.")
-
-        # Fallback to Rule-based Medical Receptionist engine (Section 2 & 4 in BUSINESS_FLOW.md)
-        return await self._fallback_conversational_engine(user_message, session_state)
-
-    async def _fallback_conversational_engine(
+    async def _conversational_state_machine(
         self,
         user_message: str,
         session: Dict[str, Any]
     ) -> Tuple[str, List[str], Dict[str, Any]]:
         """
-        Rock-solid fallback conversational engine fully adhering to BUSINESS_FLOW.md
-        guaranteeing 100% adherence to the 5-step flow and medical safety guardrails
-        even without an active Gemini API key.
+        Full-Stack End-to-End Patient Appointment State Machine Workflow.
+        States:
+        - WELCOME_MENU: Initial greeting, presenting interactive options (Book / Info / Staff).
+        - DOCTOR_SELECTION: If multiple doctors, lists them. If 1 doctor, auto-selects.
+        - COLLECT_NAME: Prompts for and validates Patient Full Name.
+        - COLLECT_PHONE: Detects webhook phone number for 1-click confirmation or takes new 10-digit number.
+        - COLLECT_ADDRESS: Optional residential address collection (with explicit 'Skip').
+        - SELECT_DATE: Displays available consultation dates based on doctor schedule.
+        - SELECT_TIME_SLOT: Displays open time slots with double-booking verification.
+        - CONFIRMATION: Saves to database and sends receipt with Booking ID.
         """
         from datetime import datetime, timedelta
         executed_tools: List[str] = []
@@ -178,42 +105,23 @@ class GeminiService:
         msg_lower = msg_clean.lower()
 
         target_schema = session.get("tenant_schema") or "public"
-        clinic_name = settings.DEFAULT_CLINIC_NAME
-        clinic_address = settings.DEFAULT_CLINIC_ADDRESS
-        clinic_phone = settings.DEFAULT_CLINIC_PHONE
-        clinic_hours = "Monday – Saturday: 9:00 AM – 1:00 PM and 4:00 PM – 7:30 PM (Sundays Closed)"
-        primary_doctor_name = settings.DEFAULT_DOCTOR_NAME
-        primary_doctor_specialty = settings.DEFAULT_DOCTOR_SPECIALTY
-        custom_welcome_prompt = None
 
-        try:
-            from sqlalchemy import select, text
-            from app.core.database import AsyncSessionLocal, is_postgres
-            from app.models.domain import Clinic, Doctor
-            async with AsyncSessionLocal() as dbs:
-                if is_postgres():
-                    await dbs.execute(text(f'SET search_path TO "{target_schema}", public;'))
-                c_res = await dbs.execute(select(Clinic).limit(1))
-                c_obj = c_res.scalar_one_or_none()
-                if c_obj:
-                    clinic_name = c_obj.name
-                    clinic_address = c_obj.address
-                    if c_obj.phone:
-                        clinic_phone = c_obj.phone
-                    if c_obj.consultation_hours:
-                        clinic_hours = c_obj.consultation_hours
-                    if c_obj.bot_config and isinstance(c_obj.bot_config, dict):
-                        custom_welcome_prompt = c_obj.bot_config.get("welcome_message")
+        # 1. Fetch real-time Clinic Profile and Doctor List from Database
+        clinic_info = await db.get_clinic_details(target_schema)
+        active_doctors = await db.get_active_doctors(target_schema)
 
-                d_res = await dbs.execute(select(Doctor).where(Doctor.is_active == True).limit(5))
-                doc_list = d_res.scalars().all()
-                if doc_list:
-                    primary_doctor_name = doc_list[0].name
-                    primary_doctor_specialty = doc_list[0].specialty
-        except Exception as e:
-            logger.warning(f"Could not load dynamic clinic context from DB: {e}")
+        clinic_name = clinic_info.get("name") or settings.DEFAULT_CLINIC_NAME
+        clinic_address = clinic_info.get("address") or settings.DEFAULT_CLINIC_ADDRESS
+        clinic_phone = clinic_info.get("phone") or settings.DEFAULT_CLINIC_PHONE
+        clinic_hours = clinic_info.get("consultation_hours") or "Monday – Saturday: 9:00 AM – 1:00 PM and 4:00 PM – 7:30 PM (Sundays Closed)"
+        custom_welcome = None
+        if isinstance(clinic_info.get("bot_config"), dict):
+            custom_welcome = clinic_info["bot_config"].get("welcome_message")
 
-        # 1. Emergency Check (Section 4.1 CAUTION)
+        primary_doctor_name = active_doctors[0]["name"] if active_doctors else settings.DEFAULT_DOCTOR_NAME
+        primary_doctor_specialty = active_doctors[0]["specialty"] if active_doctors else settings.DEFAULT_DOCTOR_SPECIALTY
+
+        # 2. Safety Guardrails: Emergency Protocol (Section 4.1 CAUTION)
         emergency_keywords = [
             "chest pain", "shortness of breath", "heart attack", "heavy bleeding",
             "stroke", "unconscious", "poison", "allergic reaction", "suicidal",
@@ -228,204 +136,501 @@ class GeminiService:
             )
             return reply, executed_tools, session
 
-        # 2. Hand-off check (Section 4.4)
+        # 3. Global Reset / Restart Handling
+        if msg_lower in ("restart", "reset", "start over", "cancel", "menu", "main menu"):
+            session.clear()
+            session["workflow_state"] = "WELCOME_MENU"
+            session["tenant_schema"] = target_schema
+
+        # 4. Global Staff Hand-off check
         if any(k in msg_lower for k in ["speak to doctor", "talk to doctor", "human", "receptionist", "speak to staff"]):
             reply = (
                 "I have flagged your request for our front-desk reception staff. "
                 "They will call you shortly at this number during clinic operating hours. "
-                f"You may also reach us directly at *{clinic_phone}*."
+                f"You may also reach us directly at *{clinic_phone}*.\n\n"
+                "_Reply *'1'* or *'Book'* anytime to schedule an appointment._"
             )
             return reply, executed_tools, session
 
-        # 3. Clinic Timings & Location (Section 4.3)
-        if any(k in msg_lower for k in ["where are you", "location", "address", "timings", "hours", "open"]):
+        # 5. Global Clinic Timings & Location check
+        if any(k in msg_lower for k in ["where are you", "location", "address", "timings", "hours", "clinic open"]):
             reply = (
                 f"📍 *Clinic Address:* {clinic_address}\n"
-                f"🕒 *Consultation Hours:* {clinic_hours}.\n\n"
-                "Would you like to book an appointment for tomorrow?"
+                f"🕒 *Consultation Hours:* {clinic_hours}\n"
+                f"📞 *Clinic Contact:* {clinic_phone}\n\n"
+                "Would you like to book an appointment? Reply *1* or *'Book'*."
             )
             return reply, executed_tools, session
 
-        step = session.get("step", 1)
+        # Current State
+        state = session.get("workflow_state", "WELCOME_MENU")
 
-        # Step 1: Greeting & Request Full Name
-        if step == 1 or not session.get("patient_name"):
-            # Check for name introduction pattern e.g. "I am Sneha", "My name is Rahul Sharma"
-            introduced_name = None
-            for prefix in ["my name is ", "i am ", "i'm ", "this is "]:
-                if prefix in msg_lower:
-                    introduced_name = msg_clean[msg_lower.index(prefix) + len(prefix):].strip().title()
-                    break
+        # ---------------------------------------------------------------------
+        # STATE 1: WELCOME_MENU
+        # ---------------------------------------------------------------------
+        if state == "WELCOME_MENU":
+            booking_intent = (
+                msg_lower in ("1", "one", "book", "appointment", "schedule", "book appointment", "new booking")
+                or any(k in msg_lower for k in ["want to book", "need appointment", "consult doctor", "see doctor"])
+            )
 
-            if introduced_name:
-                session["patient_name"] = introduced_name
-                session["step"] = 2
-                reply = (
-                    f"Thank you, *{session['patient_name']}*! 🙏\n\n"
-                    f"Could you please share your *10-digit mobile number* so we can confirm your booking and send appointment updates?"
-                )
-                return reply, executed_tools, session
-
-            # If awaiting name after greeting has already been given:
-            if session.get("awaiting_name"):
-                # Clean name
-                clean_name = msg_clean.replace(".", "").strip().title()
-                session["patient_name"] = clean_name
-                session["awaiting_name"] = False
-                session["step"] = 2
-                reply = (
-                    f"Thank you, *{session['patient_name']}*! 🙏\n\n"
-                    f"Could you please share your *10-digit mobile number* so we can confirm your booking and send appointment updates?"
-                )
-                return reply, executed_tools, session
-
-            # Booking intent or initial greeting (BUSINESS_FLOW.md Step 1)
-            booking_intent_keywords = [
-                "hi", "hello", "hey", "appointment", "book", "see", "doctor",
-                "consult", "dr", "siddhi", "clinic", "schedule", "visit", "need"
-            ]
-            if any(k in msg_lower for k in booking_intent_keywords) or not session.get("greeted"):
-                session["greeted"] = True
-                session["awaiting_name"] = True
-                if custom_welcome_prompt:
-                    reply = f"{custom_welcome_prompt}\n\nMay I please have your *full name*?"
-                else:
+            if booking_intent:
+                # Transition into booking workflow: Check doctors
+                if len(active_doctors) > 1:
+                    # Multiple doctors available: Let patient choose doctor
+                    session["workflow_state"] = "DOCTOR_SELECTION"
+                    session["offered_doctors"] = active_doctors
+                    emoji_nums = ["1️⃣", "2️⃣", "3️⃣", "4️⃣", "5️⃣", "6️⃣", "7️⃣", "8️⃣"]
+                    doc_options = "\n".join([
+                        f"{emoji_nums[i] if i < len(emoji_nums) else f'({i+1})'} *{d['name']}* — _{d['specialty']}_"
+                        for i, d in enumerate(active_doctors)
+                    ])
                     reply = (
-                        f"Hello! 👋 Welcome to *{clinic_name}*.\n\n"
-                        f"I would be happy to help you schedule an appointment with {primary_doctor_name}.\n\n"
-                        "May I please have your *full name*?"
+                        "🩺 *Please select a Doctor for your consultation:*\n\n"
+                        f"{doc_options}\n\n"
+                        "_Please reply with the doctor's number or name._"
                     )
+                    return reply, executed_tools, session
+                elif len(active_doctors) == 1:
+                    # Exactly one doctor: Auto-select and move directly to patient details
+                    doc = active_doctors[0]
+                    session["doctor_id"] = doc["id"]
+                    session["doctor_name"] = doc["name"]
+                    session["doctor_specialty"] = doc["specialty"]
+                    session["workflow_state"] = "COLLECT_NAME"
+                    reply = (
+                        f"You are booking an appointment with *{doc['name']}* ({doc['specialty']}).\n\n"
+                        "May I please have the patient's *Full Name*?"
+                    )
+                    return reply, executed_tools, session
+                else:
+                    # No doctors in DB: fallback to primary clinic doctor
+                    session["doctor_id"] = None
+                    session["doctor_name"] = primary_doctor_name
+                    session["doctor_specialty"] = primary_doctor_specialty
+                    session["workflow_state"] = "COLLECT_NAME"
+                    reply = (
+                        f"You are booking an appointment with *{primary_doctor_name}* ({primary_doctor_specialty}).\n\n"
+                        "May I please have the patient's *Full Name*?"
+                    )
+                    return reply, executed_tools, session
+
+            # If option 2 (Timings / Location)
+            if msg_lower in ("2", "two", "timings", "location", "address"):
+                reply = (
+                    f"📍 *Clinic Address:* {clinic_address}\n"
+                    f"🕒 *Consultation Hours:* {clinic_hours}\n"
+                    f"📞 *Clinic Phone:* {clinic_phone}\n\n"
+                    "Reply *1* or *'Book'* to schedule an appointment."
+                )
                 return reply, executed_tools, session
 
-            # Otherwise treat direct input as name
-            session["patient_name"] = msg_clean.replace(".", "").strip().title()
-            session["step"] = 2
+            # If option 3 (Staff Hand-off)
+            if msg_lower in ("3", "three", "staff", "receptionist", "speak"):
+                reply = (
+                    "Our reception staff will assist you shortly. "
+                    f"You can also reach us directly at *{clinic_phone}*.\n\n"
+                    "_Reply *1* anytime to book an appointment online._"
+                )
+                return reply, executed_tools, session
+
+            # Default Welcome Menu presentation
+            welcome_header = custom_welcome or f"Hello! 👋 Welcome to *{clinic_name}*."
             reply = (
-                f"Thank you, *{session['patient_name']}*! 🙏\n\n"
-                f"Could you please share your *10-digit mobile number* so we can confirm your booking and send appointment updates?"
+                f"{welcome_header}\n\n"
+                "How can we assist you today?\n"
+                "1️⃣ *Book Appointment*\n"
+                "2️⃣ *Clinic Timings & Location*\n"
+                "3️⃣ *Speak with Front Desk Staff*\n\n"
+                "_Please reply with 1, 2, or 3._"
             )
             return reply, executed_tools, session
 
-        # Step 2: Request 10-Digit Mobile Number
-        if step == 2 or not session.get("mobile_number"):
-            # Extract digits
-            digits = "".join(filter(str.isdigit, msg_clean))
-            if len(digits) >= 10:
-                # Take last 10 digits
-                phone_10 = digits[-10:]
-                session["mobile_number"] = phone_10
-                session["step"] = 3
+        # ---------------------------------------------------------------------
+        # STATE 2: DOCTOR_SELECTION
+        # ---------------------------------------------------------------------
+        if state == "DOCTOR_SELECTION":
+            offered = session.get("offered_doctors") or active_doctors
+            selected_doc = None
 
-                # Invoke tool: get_available_slots
-                executed_tools.append("get_available_slots")
-                slots_res = await get_available_slots("tomorrow", tenant_schema=target_schema)
-                slots = slots_res.get("available_slots", [])
-                target_date = slots_res.get("date")
-                session["offered_slots"] = slots
-                session["selected_date"] = target_date
-
-                # Format date nicely
-                try:
-                    dt = datetime.strptime(target_date, "%Y-%m-%d")
-                    formatted_date = dt.strftime("%A, %b %d")
-                except Exception:
-                    formatted_date = "Tomorrow"
-
-                emoji_numbers = ["1️⃣", "2️⃣", "3️⃣", "4️⃣", "5️⃣", "6️⃣", "7️⃣", "8️⃣", "9️⃣", "🔟"]
-                slots_to_show = slots[:10]
-                slots_text = "\n".join([
-                    f"{emoji_numbers[i] if i < len(emoji_numbers) else f'({i+1})'} *{slot}*"
-                    for i, slot in enumerate(slots_to_show)
-                ])
-
-                reply = (
-                    f"Got it! Here are the available consultation slots for *Tomorrow ({formatted_date})*:\n\n"
-                    f"{slots_text}\n\n"
-                    f"Please reply with the number or time that works best for you."
-                )
-                return reply, executed_tools, session
-            else:
-                reply = "Please provide a valid 10-digit mobile number (e.g., 9876543210)."
-                return reply, executed_tools, session
-
-        # Step 3: Slot selection & Step 4/5 Booking
-        if step == 3:
-            offered = session.get("offered_slots", ["10:00 AM", "10:30 AM", "11:15 AM", "04:30 PM", "05:15 PM"])
-            chosen_slot = None
-
-            # Check if user specified number (e.g., "1", "option 2", "2")
-            for idx, slot in enumerate(offered):
+            # 1. Match by numeric option
+            for idx, d in enumerate(offered):
                 opt_str = str(idx + 1)
-                if (opt_str in msg_clean.split()) or (f"option {opt_str}" in msg_lower) or (msg_clean == opt_str):
-                    chosen_slot = slot
+                if (msg_clean == opt_str) or (f"option {opt_str}" in msg_lower) or (msg_clean.startswith(opt_str) and len(msg_clean) <= 3):
+                    selected_doc = d
                     break
 
-            # If not matched by index, check time match e.g. "10:30", "11:15", "4:30"
-            if not chosen_slot:
-                for slot in offered:
-                    clean_time = slot.lower().replace("am", "").replace("pm", "").strip()
-                    if clean_time in msg_lower or slot.lower() in msg_lower:
-                        chosen_slot = slot
+            # 2. Match by doctor name substring
+            if not selected_doc:
+                for d in offered:
+                    doc_surname = d["name"].split()[-1].lower()
+                    if doc_surname in msg_lower or d["name"].lower() in msg_lower:
+                        selected_doc = d
                         break
 
-            if chosen_slot:
-                session["selected_slot"] = chosen_slot
-                target_date = session.get("selected_date")
-                if not target_date:
-                    target_date = (datetime.now() + timedelta(days=1)).strftime("%Y-%m-%d")
+            # 3. Match by specialty substring
+            if not selected_doc:
+                for d in offered:
+                    if d.get("specialty") and d["specialty"].lower() in msg_lower:
+                        selected_doc = d
+                        break
 
-                # Invoke tool: book_appointment
-                executed_tools.append("book_appointment")
-                booking_res = await book_appointment(
-                    patient_name=session["patient_name"],
-                    mobile_number=session["mobile_number"],
-                    date=target_date,
-                    time_slot=chosen_slot,
-                    tenant_schema=target_schema
-                )
-
-                try:
-                    dt = datetime.strptime(target_date, "%Y-%m-%d")
-                    display_date = dt.strftime("%A, %d %B %Y")
-                except Exception:
-                    display_date = target_date
-
-                session["step"] = 5  # Confirmed
+            if selected_doc:
+                session["doctor_id"] = selected_doc["id"]
+                session["doctor_name"] = selected_doc["name"]
+                session["doctor_specialty"] = selected_doc.get("specialty", "General Physician")
+                session["workflow_state"] = "COLLECT_NAME"
 
                 reply = (
-                    "🎉 *Appointment Confirmed!*\n\n"
-                    "Here are your booking details:\n"
-                    f"• *Patient:* {session['patient_name']}\n"
-                    f"• *Doctor:* {booking_res.get('doctor_name', primary_doctor_name)}\n"
-                    f"• *Date:* {display_date}\n"
-                    f"• *Time:* {chosen_slot}\n"
-                    f"• *Clinic Address:* {booking_res.get('clinic_address', clinic_address)}\n\n"
-                    "⏰ *Note:* You will receive an automated reminder on WhatsApp *1 hour before* your scheduled visit.\n\n"
-                    "Need to reschedule or cancel? Reply here anytime. Wishing you good health! 🌿"
+                    f"Great! You have selected *{selected_doc['name']}* ({session['doctor_specialty']}) 👍\n\n"
+                    "May I please have the patient's *Full Name*?"
                 )
                 return reply, executed_tools, session
             else:
-                # Clarify slot selection
-                emoji_numbers = ["1️⃣", "2️⃣", "3️⃣", "4️⃣", "5️⃣"]
-                slots_text = "\n".join([f"{emoji_numbers[i]} *{slot}*" for i, slot in enumerate(offered)])
+                emoji_nums = ["1️⃣", "2️⃣", "3️⃣", "4️⃣", "5️⃣", "6️⃣", "7️⃣", "8️⃣"]
+                doc_options = "\n".join([
+                    f"{emoji_nums[i] if i < len(emoji_nums) else f'({i+1})'} *{d['name']}* — _{d['specialty']}_"
+                    for i, d in enumerate(offered)
+                ])
                 reply = (
-                    "Please reply with the slot number (e.g., *1* or *2*) or your preferred time:\n\n"
-                    f"{slots_text}"
+                    "⚠️ Please choose a valid doctor by replying with their number or name:\n\n"
+                    f"{doc_options}"
                 )
                 return reply, executed_tools, session
 
-        # Post-confirmation or fallback
-        reply = (
-            "Your appointment has been confirmed! If you would like to book another appointment "
-            "or need assistance, please reply with *'New Booking'*."
-        )
-        if "new" in msg_lower or "book" in msg_lower:
-            session.clear()
-            session["step"] = 1
+        # ---------------------------------------------------------------------
+        # STATE 3: COLLECT_NAME
+        # ---------------------------------------------------------------------
+        if state == "COLLECT_NAME":
+            # Strip common introductory phrases
+            cleaned = msg_clean
+            for prefix in ["my name is ", "i am ", "i'm ", "this is ", "patient name is ", "name is "]:
+                if cleaned.lower().startswith(prefix):
+                    cleaned = cleaned[len(prefix):].strip()
+                    break
+
+            cleaned = cleaned.replace(".", "").strip().title()
+
+            # Name validation: at least 2 chars, not purely numbers
+            if len(cleaned) < 2 or cleaned.isdigit():
+                reply = "⚠️ Please provide a valid patient name (e.g. *Rahul Sharma*):"
+                return reply, executed_tools, session
+
+            session["patient_name"] = cleaned
+            session["workflow_state"] = "COLLECT_PHONE"
+
+            # Check if sender phone was detected from WhatsApp webhook / session
+            raw_sender = session.get("sender_phone") or session.get("mobile_number")
+            detected_10 = None
+            if raw_sender:
+                digits_only = "".join(filter(str.isdigit, str(raw_sender)))
+                if len(digits_only) >= 10:
+                    detected_10 = digits_only[-10:]
+
+            if detected_10:
+                session["detected_phone"] = detected_10
+                reply = (
+                    f"Thank you, *{cleaned}*! 🙏\n\n"
+                    f"We detected your WhatsApp phone number: *{detected_10}*.\n"
+                    "Would you like to use this number for your appointment confirmation?\n\n"
+                    f"• Reply *1* or *'Yes'* to use *{detected_10}*\n"
+                    "• Or enter a different *10-digit mobile number*."
+                )
+                return reply, executed_tools, session
+            else:
+                reply = (
+                    f"Thank you, *{cleaned}*! 🙏\n\n"
+                    "Could you please share your *10-digit mobile number* so we can confirm your booking and send appointment updates?"
+                )
+                return reply, executed_tools, session
+
+        # ---------------------------------------------------------------------
+        # STATE 4: COLLECT_PHONE
+        # ---------------------------------------------------------------------
+        if state == "COLLECT_PHONE":
+            detected_10 = session.get("detected_phone")
+            final_phone = None
+
+            # User confirms detected number
+            if detected_10 and (msg_lower in ("1", "yes", "y", "use this", "confirm", "correct", "sure", "ok")):
+                final_phone = detected_10
+            else:
+                digits = "".join(filter(str.isdigit, msg_clean))
+                if len(digits) >= 10:
+                    final_phone = digits[-10:]
+
+            if not final_phone:
+                reply = "⚠️ Please provide a valid 10-digit mobile number (e.g., *9876543210*):"
+                return reply, executed_tools, session
+
+            session["mobile_number"] = final_phone
+            session["workflow_state"] = "COLLECT_ADDRESS"
+
             reply = (
-                f"Hello! 👋 Welcome back to *{clinic_name}*.\n\n"
-                "May I please have the *full name* for this appointment?"
+                f"Phone number saved: *{final_phone}* ✅\n\n"
+                "Could you please share the patient's *residential address / city*?\n\n"
+                "_(Optional — reply *'Skip'* to proceed without address)_"
             )
+            return reply, executed_tools, session
+
+        # ---------------------------------------------------------------------
+        # STATE 5: COLLECT_ADDRESS
+        # ---------------------------------------------------------------------
+        if state == "COLLECT_ADDRESS":
+            if msg_lower in ("skip", "no", "none", "pass", "na", "n/a", "-", "later", "not now"):
+                session["address"] = None
+            else:
+                session["address"] = msg_clean
+
+            session["workflow_state"] = "SELECT_DATE"
+
+            # Prepare next 4 available appointment days
+            now = datetime.now()
+            offered_dates = []
+            for i in range(1, 5):
+                day_dt = now + timedelta(days=i)
+                date_str = day_dt.strftime("%Y-%m-%d")
+                label = "Tomorrow" if i == 1 else day_dt.strftime("%A")
+                formatted = day_dt.strftime("%b %d, %Y")
+                offered_dates.append({
+                    "date": date_str,
+                    "label": f"{label} ({formatted})"
+                })
+
+            session["offered_dates"] = offered_dates
+            doc_display = session.get("doctor_name", primary_doctor_name)
+
+            emoji_nums = ["1️⃣", "2️⃣", "3️⃣", "4️⃣"]
+            date_options = "\n".join([
+                f"{emoji_nums[i]} *{d['label']}*"
+                for i, d in enumerate(offered_dates)
+            ])
+
+            reply = (
+                f"Got it! 📅 *Please choose your preferred appointment date for {doc_display}:*\n\n"
+                f"{date_options}\n\n"
+                "_Reply with 1, 2, 3, 4, or enter a specific date (YYYY-MM-DD)._"
+            )
+            return reply, executed_tools, session
+
+        # ---------------------------------------------------------------------
+        # STATE 6: SELECT_DATE
+        # ---------------------------------------------------------------------
+        if state == "SELECT_DATE":
+            offered_dates = session.get("offered_dates", [])
+            chosen_date = None
+
+            # 1. Match by numeric option
+            for idx, d in enumerate(offered_dates):
+                opt_str = str(idx + 1)
+                if (msg_clean == opt_str) or (f"option {opt_str}" in msg_lower):
+                    chosen_date = d["date"]
+                    break
+
+            # 2. Match by relative or day name
+            if not chosen_date:
+                now = datetime.now()
+                if "today" in msg_lower:
+                    chosen_date = now.strftime("%Y-%m-%d")
+                elif "tomorrow" in msg_lower or "tmrw" in msg_lower:
+                    chosen_date = (now + timedelta(days=1)).strftime("%Y-%m-%d")
+                else:
+                    for d in offered_dates:
+                        if d["label"].lower().split()[0] in msg_lower:
+                            chosen_date = d["date"]
+                            break
+
+            # 3. Direct date string parse (YYYY-MM-DD or DD-MM-YYYY)
+            if not chosen_date:
+                try:
+                    for fmt in ("%Y-%m-%d", "%d-%m-%Y", "%d/%m/%Y"):
+                        try:
+                            parsed_dt = datetime.strptime(msg_clean, fmt)
+                            chosen_date = parsed_dt.strftime("%Y-%m-%d")
+                            break
+                        except ValueError:
+                            continue
+                except Exception:
+                    pass
+
+            if not chosen_date:
+                emoji_nums = ["1️⃣", "2️⃣", "3️⃣", "4️⃣"]
+                date_options = "\n".join([
+                    f"{emoji_nums[i]} *{d['label']}*"
+                    for i, d in enumerate(offered_dates)
+                ])
+                reply = (
+                    "⚠️ Please choose a valid date option (1 to 4) or enter date as YYYY-MM-DD:\n\n"
+                    f"{date_options}"
+                )
+                return reply, executed_tools, session
+
+            # Query real-time available slots for chosen date
+            executed_tools.append("get_available_slots")
+            doc_id = session.get("doctor_id")
+            slots_res = await get_available_slots(
+                date=chosen_date,
+                doctor_id=doc_id,
+                tenant_schema=target_schema
+            )
+
+            available_slots = slots_res.get("available_slots", [])
+            doc_name = session.get("doctor_name") or slots_res.get("doctor_name") or primary_doctor_name
+
+            # Format date for display
+            try:
+                dt_obj = datetime.strptime(chosen_date, "%Y-%m-%d")
+                display_date = dt_obj.strftime("%A, %b %d, %Y")
+            except Exception:
+                display_date = chosen_date
+
+            # Edge Case: No slots available on this date
+            if not available_slots:
+                emoji_nums = ["1️⃣", "2️⃣", "3️⃣", "4️⃣"]
+                date_options = "\n".join([
+                    f"{emoji_nums[i]} *{d['label']}*"
+                    for i, d in enumerate(offered_dates)
+                    if d["date"] != chosen_date
+                ])
+                reply = (
+                    f"⚠️ *No consultation slots are available on {display_date}* with *{doc_name}*.\n"
+                    "The doctor is fully booked or not consulting on this date.\n\n"
+                    "Please select another date from the options below:\n"
+                    f"{date_options}"
+                )
+                return reply, executed_tools, session
+
+            # Slots available: transition to SELECT_TIME_SLOT
+            session["selected_date"] = chosen_date
+            session["appointment_date"] = chosen_date
+            session["offered_slots"] = available_slots[:8]  # Show top 8 slots
+            session["workflow_state"] = "SELECT_TIME_SLOT"
+
+            emoji_nums = ["1️⃣", "2️⃣", "3️⃣", "4️⃣", "5️⃣", "6️⃣", "7️⃣", "8️⃣"]
+            slots_display = "\n".join([
+                f"{emoji_nums[i]} *{s}*"
+                for i, s in enumerate(session["offered_slots"])
+            ])
+
+            reply = (
+                f"🕒 *Available Consultation Slots for {display_date}*:\n"
+                f"Doctor: *{doc_name}*\n\n"
+                f"{slots_display}\n\n"
+                "_Please reply with the slot number (e.g. 1) or preferred time (e.g. 10:30 AM)._"
+            )
+            return reply, executed_tools, session
+
+        # ---------------------------------------------------------------------
+        # STATE 7: SELECT_TIME_SLOT
+        # ---------------------------------------------------------------------
+        if state == "SELECT_TIME_SLOT":
+            offered_slots = session.get("offered_slots", [])
+            chosen_slot = None
+
+            # 1. Match numeric option
+            for idx, s in enumerate(offered_slots):
+                opt_str = str(idx + 1)
+                if (msg_clean == opt_str) or (f"option {opt_str}" in msg_lower):
+                    chosen_slot = s
+                    break
+
+            # 2. Match exact time string or substring e.g. "10:30", "10:30 AM", "4:30"
+            if not chosen_slot:
+                for s in offered_slots:
+                    clean_s = s.lower().replace("am", "").replace("pm", "").strip()
+                    if clean_s in msg_lower or s.lower() in msg_lower:
+                        chosen_slot = s
+                        break
+
+            if not chosen_slot:
+                emoji_nums = ["1️⃣", "2️⃣", "3️⃣", "4️⃣", "5️⃣", "6️⃣", "7️⃣", "8️⃣"]
+                slots_display = "\n".join([
+                    f"{emoji_nums[i]} *{s}*"
+                    for i, s in enumerate(offered_slots)
+                ])
+                reply = (
+                    "⚠️ Please reply with a valid slot number from the list (e.g. *1*) or time (e.g. *10:30 AM*):\n\n"
+                    f"{slots_display}"
+                )
+                return reply, executed_tools, session
+
+            # 3. Race condition verification & double-booking prevention in Database
+            executed_tools.append("book_appointment")
+            booking_res = await book_appointment(
+                patient_name=session["patient_name"],
+                mobile_number=session["mobile_number"],
+                date=session["selected_date"],
+                time_slot=chosen_slot,
+                doctor_id=session.get("doctor_id"),
+                address=session.get("address"),
+                tenant_schema=target_schema
+            )
+
+            # Slot was taken by concurrent booking
+            if booking_res.get("status") == "SLOT_TAKEN":
+                # Refresh remaining available slots
+                refreshed = await get_available_slots(
+                    date=session["selected_date"],
+                    doctor_id=session.get("doctor_id"),
+                    tenant_schema=target_schema
+                )
+                new_slots = refreshed.get("available_slots", [])
+                session["offered_slots"] = new_slots[:8]
+                emoji_nums = ["1️⃣", "2️⃣", "3️⃣", "4️⃣", "5️⃣", "6️⃣", "7️⃣", "8️⃣"]
+                slots_display = "\n".join([f"{emoji_nums[i]} *{s}*" for i, s in enumerate(new_slots[:8])])
+                reply = (
+                    f"⚠️ *Slot Just Taken!*\n"
+                    f"The slot *{chosen_slot}* was just booked by another patient.\n\n"
+                    "Please choose from the remaining available slots:\n"
+                    f"{slots_display}"
+                )
+                return reply, executed_tools, session
+
+            # 4. Success: Format Final Confirmation Summary
+            appt_id = booking_res.get("appointment_id", "APT-SUCCESS")
+            short_id = appt_id[:8].upper() if len(appt_id) >= 8 else appt_id
+
+            try:
+                dt_obj = datetime.strptime(session["selected_date"], "%Y-%m-%d")
+                display_date = dt_obj.strftime("%A, %d %B %Y")
+            except Exception:
+                display_date = session["selected_date"]
+
+            doc_display = booking_res.get("doctor_name") or session.get("doctor_name") or primary_doctor_name
+            spec_display = session.get("doctor_specialty") or primary_doctor_specialty
+            addr_line = f"\n• *Address:* {session['address']}" if session.get("address") else ""
+
+            reply = (
+                "🎉 *Appointment Confirmed!*\n\n"
+                f"• *Booking ID:* #{short_id}\n"
+                f"• *Patient:* {session['patient_name']}\n"
+                f"• *Phone:* {session['mobile_number']}{addr_line}\n"
+                f"• *Doctor:* {doc_display} ({spec_display})\n"
+                f"• *Date:* {display_date}\n"
+                f"• *Time:* {chosen_slot}\n"
+                f"• *Clinic:* {clinic_name}\n"
+                f"• *Location:* {clinic_address}\n\n"
+                "⏰ *Reminder Notice:* You will receive an automated WhatsApp reminder *1 hour before* your consultation.\n\n"
+                "_Need to book another appointment or make changes? Just reply *'Hi'* anytime!_ 🌿"
+            )
+
+            # Reset state for subsequent new conversations
+            session.clear()
+            session["workflow_state"] = "WELCOME_MENU"
+            session["tenant_schema"] = target_schema
+            return reply, executed_tools, session
+
+        # Fallback reset if unexpected state
+        session.clear()
+        session["workflow_state"] = "WELCOME_MENU"
+        reply = (
+            f"Hello! 👋 Welcome to *{clinic_name}*.\n\n"
+            "How can we help you today?\n"
+            "1️⃣ *Book Appointment*\n"
+            "2️⃣ *Clinic Timings & Location*\n"
+            "3️⃣ *Speak with Staff*\n\n"
+            "_Reply with 1, 2, or 3._"
+        )
         return reply, executed_tools, session
 
 

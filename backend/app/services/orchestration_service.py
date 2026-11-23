@@ -29,6 +29,7 @@ class OrchestrationPipeline:
 
         # 1. Fetch current session
         session = await session_service.get_session(phone_number)
+        session["sender_phone"] = phone_number
         if tenant_schema:
             session["tenant_schema"] = tenant_schema
 

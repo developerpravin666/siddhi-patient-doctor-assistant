@@ -26,7 +26,7 @@ def generate_slots_by_interval(start_hour: int, start_min: int, end_hour: int, e
 async def get_available_slots(
     date: str,
     doctor_id: Optional[str] = None,
-    tenant_schema: str = "clinic_default"
+    tenant_schema: str = "public"
 ) -> Dict[str, Any]:
     """
     Queries open doctor appointment time slots dynamically from the database
@@ -48,15 +48,19 @@ async def get_available_slots(
         except Exception:
             target_date = (now + timedelta(days=1)).strftime("%Y-%m-%d")
 
+    target_weekday = datetime.strptime(target_date, "%Y-%m-%d").strftime("%A").lower()
+
     # 1. Fetch doctor(s) schedule dynamically from database
     configured_slots: List[str] = []
     doctor_name: Optional[str] = None
     doctor_specialty: Optional[str] = None
+    doctor_available_today = False
+    safe_schema = await db.resolve_schema(tenant_schema)
 
     async with AsyncSessionLocal() as session:
         try:
             if is_postgres():
-                await session.execute(text(f'SET search_path TO "{tenant_schema}", public;'))
+                await session.execute(text(f'SET search_path TO "{safe_schema}", public;'))
 
             stmt = select(Doctor).where(Doctor.is_active == True)
             if doctor_id:
@@ -66,6 +70,25 @@ async def get_available_slots(
             doctors = res.scalars().all()
 
             for doc in doctors:
+                # Check doctor available days (e.g. "Monday, Wednesday, Friday" or "Mon-Sat")
+                days_str = (doc.available_days or "Monday - Saturday").lower()
+                is_available = False
+                if "daily" in days_str or "all" in days_str or "everyday" in days_str:
+                    is_available = True
+                elif "mon-sat" in days_str or "monday - saturday" in days_str or "monday to saturday" in days_str:
+                    is_available = target_weekday != "sunday"
+                elif "mon-fri" in days_str or "monday - friday" in days_str or "monday to friday" in days_str:
+                    is_available = target_weekday not in ("saturday", "sunday")
+                else:
+                    is_available = target_weekday[:3] in days_str or target_weekday in days_str
+
+                if not is_available and len(doctors) == 1:
+                    # Doctor explicitly not available on this day
+                    doctor_name = doc.name
+                    doctor_specialty = doc.specialty
+                    continue
+
+                doctor_available_today = True
                 doc_slots = []
                 # Use doctor configured morning & evening slots if present
                 if doc.morning_slots and doc.morning_slots.strip():
@@ -89,8 +112,8 @@ async def get_available_slots(
         except Exception as e:
             logger.warning(f"Error querying doctors from database for slots: {e}")
 
-    # Fallback to standard 30-min slots if no doctor slots retrieved
-    if not configured_slots:
+    # Fallback to standard slots ONLY if doctor is marked available or no specific doctor configured
+    if not configured_slots and doctor_available_today:
         configured_slots = [
             "09:00 AM", "09:30 AM", "10:00 AM", "10:30 AM",
             "11:00 AM", "11:30 AM", "12:00 PM", "12:30 PM",
@@ -115,7 +138,7 @@ async def get_available_slots(
         "doctor_id": doctor_id,
         "doctor_name": doctor_name,
         "doctor_specialty": doctor_specialty,
-        "available_slots": open_slots[:10],
+        "available_slots": open_slots,
         "total_available": len(open_slots)
     }
 
@@ -127,10 +150,11 @@ async def book_appointment(
     time_slot: str,
     doctor_id: Optional[str] = None,
     clinic_id: Optional[str] = None,
-    tenant_schema: str = "clinic_default"
+    address: Optional[str] = None,
+    tenant_schema: str = "public"
 ) -> Dict[str, Any]:
     """
-    Confirms and saves the appointment to the database and schedules a reminder.
+    Confirms and saves the appointment to the database with double-booking prevention.
     """
     now = datetime.now()
     if not date or date.lower() in ("tomorrow", "tmrw"):
@@ -152,8 +176,12 @@ async def book_appointment(
         "time_slot": time_slot.strip(),
         "doctor_id": doctor_id,
         "clinic_id": clinic_id,
+        "address": address,
         "status": "CONFIRMED"
     }, tenant_schema=tenant_schema)
+
+    if result.get("status") == "SLOT_TAKEN":
+        return result
 
     return {
         "status": "SUCCESS",
