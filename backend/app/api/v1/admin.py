@@ -1474,6 +1474,31 @@ async def test_whatsapp_connection(
         }
 
 
+@router.post("/whatsapp/subscribe-waba")
+async def subscribe_waba_endpoint(
+    current_user: AdminUser = Depends(require_roles(["SUPER_ADMIN", "CLINIC_ADMIN"])),
+    db_session: AsyncSession = Depends(get_db)
+):
+    """
+    Subscribes the WhatsApp Business Account (WABA) to the app's webhooks.
+    Required by Meta to receive live inbound messages from patients and delivery status updates.
+    """
+    tenant_schema = await resolve_user_tenant_schema(current_user, db_session)
+    if is_postgres():
+        await db_session.execute(text(f'SET search_path TO "{tenant_schema}", public;'))
+
+    stmt = select(Clinic).limit(1)
+    clinic = (await db_session.execute(stmt)).scalar_one_or_none()
+
+    eff_waba_id = (clinic.whatsapp_business_account_id if clinic and clinic.whatsapp_business_account_id else None) or settings.WHATSAPP_BUSINESS_ACCOUNT_ID
+    eff_token = (clinic.whatsapp_access_token if clinic and clinic.whatsapp_access_token else None) or settings.WHATSAPP_ACCESS_TOKEN
+
+    from app.services.whatsapp_service import WhatsAppService
+    wa_svc = WhatsAppService(access_token=eff_token)
+    res = await wa_svc.subscribe_waba(waba_id=eff_waba_id, access_token=eff_token)
+    return res
+
+
 # -----------------------------------------------------------------------------
 # Specializations Master Endpoints (Global Master Catalog for Clinics & Doctors)
 # -----------------------------------------------------------------------------

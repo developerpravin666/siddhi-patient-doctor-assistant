@@ -430,6 +430,11 @@ export const testWhatsAppConnection = async (
   return res.data;
 };
 
+export const subscribeWabaWebhook = async (): Promise<{ success: boolean; error?: string; data?: any }> => {
+  const res = await api.post('/api/v1/admin/whatsapp/subscribe-waba');
+  return res.data;
+};
+
 // -----------------------------------------------------------------------------
 // WhatsApp Simulator
 // -----------------------------------------------------------------------------

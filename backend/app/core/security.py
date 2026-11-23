@@ -12,11 +12,15 @@ def verify_whatsapp_signature(body_bytes: bytes, signature_header: Optional[str]
     Validates the X-Hub-Signature-256 header sent by Meta WhatsApp Cloud API.
     Header format: 'sha256=<hex_digest>'
     """
-    if not secret:
-        # If secret is not configured in development, allow request but log warning
+    clean_secret = (secret or "").strip()
+    if not clean_secret or clean_secret in ("your_meta_app_secret_here", "dummy_secret"):
+        # If secret is not configured or placeholder in development, allow request
         return True
 
     if not signature_header:
+        # In development environment, allow requests if signature header is omitted (e.g. Meta dev test tool)
+        if settings.ENV == "development":
+            return True
         return False
 
     elements = signature_header.split("=")
@@ -24,7 +28,7 @@ def verify_whatsapp_signature(body_bytes: bytes, signature_header: Optional[str]
         return False
 
     expected_hash = elements[1]
-    mac = hmac.new(secret.encode("utf-8"), msg=body_bytes, digestmod=hashlib.sha256)
+    mac = hmac.new(clean_secret.encode("utf-8"), msg=body_bytes, digestmod=hashlib.sha256)
     computed_hash = mac.hexdigest()
 
     return hmac.compare_digest(expected_hash, computed_hash)

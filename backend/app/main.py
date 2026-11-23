@@ -116,6 +116,7 @@ async def global_exception_handler(request: Request, exc: Exception):
 
 # Include Routers
 app.include_router(webhook_router)
+app.include_router(webhook_router, prefix="/api/v1")
 app.include_router(auth_router, prefix="/api/v1")
 app.include_router(appointments_router, prefix="/api/v1")
 app.include_router(admin_router, prefix="/api/v1")

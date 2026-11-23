@@ -18,7 +18,7 @@
  * automatically read from here.
  */
 
-export const DEFAULT_API_URL = 'https://estimation-installation-kelly-normal.trycloudflare.com'; // || 'http://localhost:8000';
+export const DEFAULT_API_URL = 'https://licenses-capable-spread-navigator.trycloudflare.com'; // || 'http://localhost:8000';
 
 export function getApiBaseUrl(): string {
   // 1. Runtime override check (from browser localStorage or window global)

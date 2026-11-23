@@ -1,5 +1,5 @@
 import logging
-from typing import Dict, Any
+from typing import Dict, Any, Optional
 from fastapi import APIRouter, Query, Response, status, Request, HTTPException, BackgroundTasks
 from app.core.config import settings
 from app.core import security
@@ -96,8 +96,9 @@ async def save_webhook_event_record(
             )
             session.add(event)
             await session.commit()
+            logger.info(f"Persisted webhook event to DB: id={event.id}, type={event_type}, status={status_val}, sender={sender_phone}")
     except Exception as e:
-        logger.error(f"Error persisting webhook event to database: {e}")
+        logger.error(f"Error persisting webhook event to database: {e}", exc_info=True)
 
 
 @router.post("/webhook")
@@ -107,14 +108,15 @@ async def receive_whatsapp_event(request: Request, background_tasks: BackgroundT
     Acknowledges within 2 seconds with 200 OK and delegates to background worker.
     Stores every webhook event in the database for auditing and live monitoring.
     """
+    body_bytes = await request.body()
     signature = request.headers.get("X-Hub-Signature-256", "")
+    logger.info(f"Incoming WhatsApp webhook POST: {len(body_bytes)} bytes, sig_present={bool(signature)}")
     req_headers = {
         "x-hub-signature-256": signature,
         "content-type": request.headers.get("content-type", ""),
         "user-agent": request.headers.get("user-agent", ""),
         "host": request.headers.get("host", ""),
     }
-    body_bytes = await request.body()
 
     # 1. Verify HMAC SHA-256 signature
     if not security.verify_whatsapp_signature(body_bytes, signature, settings.WHATSAPP_APP_SECRET):

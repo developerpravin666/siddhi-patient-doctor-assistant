@@ -17,7 +17,7 @@ import {
 } from 'lucide-react';
 import { useOutletContext } from 'react-router-dom';
 import { WhatsAppConfig, Doctor, AdminUser, UserRole, AppContextType } from '../types';
-import { getWhatsAppConfig, updateWhatsAppConfig, testWhatsAppConnection, getDoctors } from '../api/client';
+import { getWhatsAppConfig, updateWhatsAppConfig, testWhatsAppConnection, subscribeWabaWebhook, getDoctors } from '../api/client';
 import { whatsappConfigSchema, validateForm } from '../utils/validation';
 import { SearchableSelect } from '../components/SearchableSelect';
 import { getWebhookCallbackUrl } from '../config';
@@ -57,6 +57,7 @@ export const WhatsAppConfigPage: React.FC<WhatsAppConfigProps> = (props) => {
   // Testing states
   const [testNumber, setTestNumber] = useState('919009368666');
   const [testingConnection, setTestingConnection] = useState(false);
+  const [subscribingWaba, setSubscribingWaba] = useState(false);
   const [testResult, setTestResult] = useState<{ status: string; message: string; is_live?: boolean } | null>(null);
   const [copiedField, setCopiedField] = useState<string | null>(null);
   const [formErrors, setFormErrors] = useState<Record<string, string>>({});
@@ -392,6 +393,40 @@ export const WhatsAppConfigPage: React.FC<WhatsAppConfigProps> = (props) => {
                 <span className="text-slate-400 text-[10px] ml-auto">
                   Click 'Manage' in Meta &gt; WhatsApp &gt; Webhook &gt; Check 'messages'
                 </span>
+              </div>
+
+              {/* WABA Subscription Trigger */}
+              <div className="p-3 bg-white rounded-xl border border-slate-200 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+                <div className="space-y-0.5">
+                  <span className="font-bold text-slate-800 text-xs flex items-center gap-1.5">
+                    <Sparkles className="w-3.5 h-3.5 text-indigo-600" /> WhatsApp Business Account (WABA) Event Subscription
+                  </span>
+                  <p className="text-[11px] text-slate-500">
+                    Required by Meta so real messages from patient WhatsApp numbers are routed to your server.
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={async () => {
+                    try {
+                      setSubscribingWaba(true);
+                      const res = await subscribeWabaWebhook();
+                      if (res.success) {
+                        showToast('Successfully subscribed WhatsApp Business Account (WABA) to app webhooks!');
+                      } else {
+                        showToast(res.error || 'Failed to subscribe WABA to webhooks. Check WABA ID and Token.', 'error');
+                      }
+                    } catch (err: any) {
+                      showToast(err.response?.data?.detail || 'Failed to subscribe WABA to webhooks', 'error');
+                    } finally {
+                      setSubscribingWaba(false);
+                    }
+                  }}
+                  disabled={subscribingWaba}
+                  className="px-3.5 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs transition shadow-sm disabled:opacity-50 shrink-0"
+                >
+                  {subscribingWaba ? 'Subscribing...' : 'Subscribe WABA to App'}
+                </button>
               </div>
             </div>
 

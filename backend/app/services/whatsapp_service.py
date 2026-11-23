@@ -270,4 +270,44 @@ class WhatsAppService:
             return False
 
 
+    async def subscribe_waba(
+        self,
+        waba_id: Optional[str] = None,
+        access_token: Optional[str] = None
+    ) -> Dict[str, Any]:
+        """
+        Subscribes the WhatsApp Business Account (WABA) to receive live webhook events.
+        Without this, Meta developer portal test button works, but live inbound/outbound
+        messages will NOT be forwarded to the webhook!
+        Meta Endpoint: POST https://graph.facebook.com/{api_version}/{waba_id}/subscribed_apps
+        """
+        tok = access_token or self.access_token
+        target_waba = (waba_id or settings.WHATSAPP_BUSINESS_ACCOUNT_ID or "").strip()
+        if not target_waba or not tok:
+            return {
+                "success": False,
+                "error": "WABA ID and Access Token are required to subscribe WABA."
+            }
+
+        url = f"https://graph.facebook.com/{self.api_version}/{target_waba}/subscribed_apps"
+        headers = {
+            "Authorization": f"Bearer {tok}",
+            "Content-Type": "application/json"
+        }
+        try:
+            async with httpx.AsyncClient(timeout=10.0) as client:
+                res = await client.post(url, headers=headers)
+                data = res.json()
+                if res.status_code in (200, 201) and data.get("success"):
+                    logger.info(f"Successfully subscribed WABA {target_waba} to app webhooks!")
+                    return {"success": True, "data": data}
+                else:
+                    err_msg = data.get("error", {}).get("message", res.text)
+                    logger.error(f"Failed to subscribe WABA {target_waba}: {err_msg}")
+                    return {"success": False, "error": err_msg, "raw": data}
+        except Exception as e:
+            logger.error(f"Exception subscribing WABA {target_waba}: {e}")
+            return {"success": False, "error": str(e)}
+
+
 whatsapp_service = WhatsAppService()
