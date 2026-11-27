@@ -116,7 +116,7 @@ async def provision_tenant_schema(schema_name: str, eng=None) -> str:
             address VARCHAR(255) NOT NULL,
             phone VARCHAR(30),
             timezone VARCHAR(50) DEFAULT 'Asia/Kolkata',
-            consultation_hours VARCHAR(255),
+            consultation_hours TEXT,
             whatsapp_phone_number_id VARCHAR(50),
             whatsapp_business_account_id VARCHAR(50),
             whatsapp_access_token TEXT,
@@ -132,6 +132,7 @@ async def provision_tenant_schema(schema_name: str, eng=None) -> str:
             name VARCHAR(100) NOT NULL,
             specialty TEXT NOT NULL,
             available_days VARCHAR(100) NOT NULL,
+            leave_dates TEXT,
             morning_slots TEXT,
             evening_slots TEXT,
             slot_duration_minutes INTEGER DEFAULT 30,
@@ -170,6 +171,7 @@ async def provision_tenant_schema(schema_name: str, eng=None) -> str:
             time_slot VARCHAR(20) NOT NULL,
             appointment_datetime TIMESTAMP WITH TIME ZONE NOT NULL,
             status VARCHAR(25) DEFAULT 'CONFIRMED',
+            notes TEXT,
             reminder_sent BOOLEAN DEFAULT FALSE,
             reminder_sent_at TIMESTAMP WITH TIME ZONE,
             created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
@@ -345,7 +347,15 @@ async def init_db():
                     except Exception:
                         pass
 
-                # Auto-migrate all active tenant schemas to ensure TEXT slots and specializations
+                # Remove any legacy tenant-only clinical tables if they were ever created in public schema
+                for legacy_tbl in ["appointments", "doctors", "patients", "clinics"]:
+                    try:
+                        async with conn.begin_nested():
+                            await conn.execute(text(f'DROP TABLE IF EXISTS public."{legacy_tbl}" CASCADE;'))
+                    except Exception:
+                        pass
+
+                # Auto-migrate all active tenant schemas to ensure latest columns & types
                 try:
                     t_res = await conn.execute(text("SELECT schema_name FROM public.tenants;"))
                     for row in t_res.fetchall():
@@ -354,7 +364,9 @@ async def init_db():
                             f'ALTER TABLE "{s_name}".doctors ALTER COLUMN specialty TYPE TEXT;',
                             f'ALTER TABLE "{s_name}".doctors ALTER COLUMN morning_slots TYPE TEXT;',
                             f'ALTER TABLE "{s_name}".doctors ALTER COLUMN evening_slots TYPE TEXT;',
+                            f'ALTER TABLE "{s_name}".doctors ADD COLUMN IF NOT EXISTS leave_dates TEXT;',
                             f'ALTER TABLE "{s_name}".clinics ALTER COLUMN consultation_hours TYPE TEXT;',
+                            f'ALTER TABLE "{s_name}".appointments ADD COLUMN IF NOT EXISTS notes TEXT;',
                         ]:
                             try:
                                 async with conn.begin_nested():
@@ -396,7 +408,7 @@ async def init_db():
                         await conn.execute(text('SET search_path TO public;'))
                         public_tables = [
                             Base.metadata.tables[t]
-                            for t in ["tenants", "admin_users", "specializations", "clinics", "doctors", "patients", "appointments"]
+                            for t in ["tenants", "admin_users", "specializations", "webhook_events"]
                             if t in Base.metadata.tables
                         ]
                         if public_tables:
