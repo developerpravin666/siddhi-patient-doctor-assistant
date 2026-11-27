@@ -412,7 +412,7 @@ export const TenantForm: React.FC = () => {
                   type="text"
                   value={clinicName}
                   onChange={(e) => handleClinicNameChange(e.target.value)}
-                  placeholder="e.g. Apex Multispeciality Hospital"
+                  placeholder="Enter clinic or hospital name"
                   className={`ui-input ${fieldErrors.name ? 'border-rose-400 bg-rose-50' : ''}`}
                 />
                 {fieldErrors.name && (
@@ -435,7 +435,7 @@ export const TenantForm: React.FC = () => {
                       setSchemaName(val);
                       setFieldErrors((prev) => clearOrValidateField(tenantCreateSchema, 'schema_name', val.trim(), prev));
                     }}
-                    placeholder="e.g. clinic_apex_hospital"
+                    placeholder="clinic_your_clinic_name"
                     className={`ui-input pl-8 font-mono ${isEditMode ? 'bg-slate-100 text-slate-500 cursor-not-allowed' : fieldErrors.schema_name ? 'border-rose-400 bg-rose-50' : ''}`}
                   />
                 </div>
@@ -501,7 +501,7 @@ export const TenantForm: React.FC = () => {
                       setOwnerName(val);
                       setFieldErrors((prev) => clearOrValidateField(isEditMode ? tenantEditSchema : tenantCreateSchema, 'owner_name', val.trim() || undefined, prev));
                     }}
-                    placeholder="e.g. Dr. Rajesh Sharma"
+                    placeholder="Enter owner or chief doctor name"
                     className={`ui-input pl-8 ${fieldErrors.owner_name ? 'border-rose-400 bg-rose-50' : ''}`}
                   />
                 </div>
@@ -522,7 +522,7 @@ export const TenantForm: React.FC = () => {
                       setOwnerPhone(val);
                       setFieldErrors((prev) => clearOrValidateField(isEditMode ? tenantEditSchema : tenantCreateSchema, 'owner_phone', val.trim() || undefined, prev));
                     }}
-                    placeholder="e.g. +91 98765 43210"
+                    placeholder="Enter contact phone number"
                     className={`ui-input pl-8 ${fieldErrors.owner_phone ? 'border-rose-400 bg-rose-50' : ''}`}
                   />
                 </div>
@@ -543,7 +543,7 @@ export const TenantForm: React.FC = () => {
                       setOwnerEmail(val);
                       setFieldErrors((prev) => clearOrValidateField(isEditMode ? tenantEditSchema : tenantCreateSchema, 'owner_email', val.trim() || undefined, prev));
                     }}
-                    placeholder="e.g. contact@apexhospital.in"
+                    placeholder="Enter owner email address"
                     className={`ui-input pl-8 ${fieldErrors.owner_email ? 'border-rose-400 bg-rose-50' : ''}`}
                   />
                 </div>
@@ -580,7 +580,7 @@ export const TenantForm: React.FC = () => {
                       setAdminUsername(val);
                       setFieldErrors((prev) => clearOrValidateField(tenantCreateSchema, 'admin_username', val.trim(), prev));
                     }}
-                    placeholder="e.g. apex_admin"
+                    placeholder="Enter admin username"
                     className={`ui-input font-mono ${fieldErrors.admin_username ? 'border-rose-400 bg-rose-50' : ''}`}
                   />
                   {fieldErrors.admin_username && (

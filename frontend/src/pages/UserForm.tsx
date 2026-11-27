@@ -259,7 +259,7 @@ export const UserForm: React.FC = () => {
               </label>
               <input
                 type="text"
-                placeholder="e.g. Priya Sharma"
+                placeholder="Enter staff full name"
                 value={fullName}
                 onChange={(e) => {
                   const val = e.target.value;
@@ -278,7 +278,7 @@ export const UserForm: React.FC = () => {
               <input
                 type="text"
                 disabled={isEditMode}
-                placeholder="e.g. priya_frontdesk"
+                placeholder="Enter username"
                 value={username}
                 onChange={(e) => {
                   const val = e.target.value;

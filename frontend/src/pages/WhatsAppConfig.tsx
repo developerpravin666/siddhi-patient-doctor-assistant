@@ -58,7 +58,7 @@ export const WhatsAppConfigPage: React.FC<WhatsAppConfigProps> = (props) => {
   const [enableAiBot, setEnableAiBot] = useState(true);
 
   // Testing states
-  const [testNumber, setTestNumber] = useState('919009368666');
+  const [testNumber, setTestNumber] = useState('');
   const [testingConnection, setTestingConnection] = useState(false);
   const [subscribingWaba, setSubscribingWaba] = useState(false);
   const [testResult, setTestResult] = useState<{ status: string; message: string; is_live?: boolean } | null>(null);
@@ -270,7 +270,7 @@ export const WhatsAppConfigPage: React.FC<WhatsAppConfigProps> = (props) => {
                       setPhoneNumberId(val);
                       setFormErrors((prev) => clearOrValidateField(whatsappConfigSchema, 'whatsapp_phone_number_id', val.trim(), prev));
                     }}
-                    placeholder="e.g. 524189020786543"
+                    placeholder="Enter WhatsApp Phone Number ID"
                     disabled={!canEdit}
                     className={`ui-input font-mono ${formErrors.whatsapp_phone_number_id
                         ? 'border-rose-400 focus:ring-rose-500/20'
@@ -289,7 +289,7 @@ export const WhatsAppConfigPage: React.FC<WhatsAppConfigProps> = (props) => {
                     type="text"
                     value={businessAccountId}
                     onChange={(e) => setBusinessAccountId(e.target.value)}
-                    placeholder="e.g. 104589201948203"
+                    placeholder="Enter WhatsApp Business Account ID"
                     disabled={!canEdit}
                     className="ui-input font-mono"
                   />
@@ -587,8 +587,8 @@ export const WhatsAppConfigPage: React.FC<WhatsAppConfigProps> = (props) => {
                 type="tel"
                 value={testNumber}
                 onChange={(e) => setTestNumber(e.target.value.replace(/[^0-9]/g, ''))}
-                placeholder="Country code + phone (e.g. 919009368666)"
-                className="w-full sm:w-72 px-3 py-2 rounded-xl border border-slate-200 font-mono text-xs focus:outline-none focus:ring-2 focus:ring-brand-500/20"
+                placeholder="Country code + mobile number"
+                className="ui-input w-full sm:w-72 font-mono"
               />
               <button
                 type="button"

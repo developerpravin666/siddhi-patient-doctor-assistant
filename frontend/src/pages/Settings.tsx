@@ -217,7 +217,7 @@ export const SettingsPage: React.FC<SettingsProps> = (props) => {
                 required
                 value={clinicName}
                 onChange={(e) => setClinicName(e.target.value)}
-                placeholder="e.g. City Care Polyclinic"
+                placeholder="Enter clinic name"
                 className="ui-input"
               />
             </div>
@@ -230,7 +230,7 @@ export const SettingsPage: React.FC<SettingsProps> = (props) => {
                 type="text"
                 value={clinicPhone}
                 onChange={(e) => setClinicPhone(e.target.value)}
-                placeholder="e.g. +91 98765 43210"
+                placeholder="Enter clinic phone number"
                 className="ui-input"
               />
             </div>
@@ -334,7 +334,7 @@ export const SettingsPage: React.FC<SettingsProps> = (props) => {
                 required
                 value={fullName}
                 onChange={(e) => setFullName(e.target.value)}
-                placeholder="e.g. Dr. Jane Doe"
+                placeholder="Enter your full name"
                 className="ui-input"
               />
             </div>

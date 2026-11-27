@@ -205,7 +205,7 @@ export const PatientForm: React.FC = () => {
                 <User className="w-3.5 h-3.5 text-slate-400 absolute left-2.5 top-1/2 -translate-y-1/2" />
                 <input
                   type="text"
-                  placeholder="e.g. Test Patient"
+                  placeholder="Enter patient full name"
                   value={formData.full_name}
                   onChange={(e) => {
                     const val = e.target.value;
@@ -228,7 +228,7 @@ export const PatientForm: React.FC = () => {
                 <Phone className="w-3.5 h-3.5 text-slate-400 absolute left-2.5 top-1/2 -translate-y-1/2" />
                 <input
                   type="text"
-                  placeholder="e.g. 9876543210"
+                  placeholder="Enter 10-digit mobile number"
                   value={formData.mobile_number}
                   onChange={(e) => {
                     const val = e.target.value;
@@ -251,7 +251,7 @@ export const PatientForm: React.FC = () => {
                 <Mail className="w-3.5 h-3.5 text-slate-400 absolute left-2.5 top-1/2 -translate-y-1/2" />
                 <input
                   type="email"
-                  placeholder="e.g. test@gmail.com"
+                  placeholder="Enter email address"
                   value={formData.email}
                   onChange={(e) => {
                     const val = e.target.value;

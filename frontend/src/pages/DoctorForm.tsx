@@ -391,7 +391,7 @@ export const DoctorForm: React.FC = () => {
                 <User className="w-3.5 h-3.5 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
                 <input
                   type="text"
-                  placeholder="e.g. Dr. Rajesh Sharma, MD"
+                  placeholder="Enter doctor full name"
                   value={formData.name}
                   onChange={(e) => {
                     const val = e.target.value;

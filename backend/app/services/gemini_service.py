@@ -773,7 +773,7 @@ class GeminiService:
 
             # Name validation: at least 2 chars, not purely numbers
             if len(cleaned) < 2 or cleaned.isdigit():
-                reply = "⚠️ Please provide a valid patient name (e.g. *Rahul Sharma*):"
+                reply = "⚠️ Please provide a valid patient full name:"
                 return reply, executed_tools, session
 
             session["patient_name"] = cleaned
