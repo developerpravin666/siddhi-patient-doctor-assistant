@@ -23,8 +23,7 @@ class Settings(BaseSettings):
         "http://localhost:8000",
         "http://127.0.0.1:3000",
         "http://127.0.0.1:5173",
-        "http://127.0.0.1:8000",
-        "https://camping-bids-objects-produce.trycloudflare.com"
+        "http://127.0.0.1:8000"
     ]
 
     @field_validator("CORS_ORIGINS", mode="before")
@@ -40,9 +39,7 @@ class Settings(BaseSettings):
                 except Exception:
                     pass
             parts = [item.strip() for item in v.split(",") if item.strip()]
-            return parts if parts else ["http://localhost:5173", "http://localhost:8000",
-                                        "https://jesse-the-bidding-machinery.trycloudflare.com",
-                                        "https://camping-bids-objects-produce.trycloudflare.com"]
+            return parts if parts else ["http://localhost:5173", "http://localhost:8000"]
         return list(v)
 
     def get_cors_origins(self) -> List[str]:

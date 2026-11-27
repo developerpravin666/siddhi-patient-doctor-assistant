@@ -13,6 +13,7 @@ import {
 } from 'lucide-react';
 import { Clinic, AppContextType } from '../types';
 import { getClinics, updateClinic, updateMyProfileApi, getStoredUser } from '../api/client';
+import { SearchableSelect } from '../components/SearchableSelect';
 
 interface SettingsProps {
   clinic?: Clinic;
@@ -208,38 +209,34 @@ export const SettingsPage: React.FC<SettingsProps> = (props) => {
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-xs">
             <div>
-              <label className="block text-slate-600 font-bold mb-1">
+              <label className="block text-slate-700 font-semibold mb-1">
                 Clinic Name <span className="text-rose-500">*</span>
               </label>
-              <div className="relative">
-                <input
-                  type="text"
-                  required
-                  value={clinicName}
-                  onChange={(e) => setClinicName(e.target.value)}
-                  placeholder="e.g. City Care Polyclinic"
-                  className="w-full px-3.5 py-2.5 rounded-xl bg-slate-50 border border-slate-200 text-slate-800 font-semibold focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
-                />
-              </div>
+              <input
+                type="text"
+                required
+                value={clinicName}
+                onChange={(e) => setClinicName(e.target.value)}
+                placeholder="e.g. City Care Polyclinic"
+                className="ui-input"
+              />
             </div>
 
             <div>
-              <label className="block text-slate-600 font-bold mb-1">
+              <label className="block text-slate-700 font-semibold mb-1">
                 Contact Phone
               </label>
-              <div className="relative">
-                <input
-                  type="text"
-                  value={clinicPhone}
-                  onChange={(e) => setClinicPhone(e.target.value)}
-                  placeholder="e.g. +91 98765 43210"
-                  className="w-full px-3.5 py-2.5 rounded-xl bg-slate-50 border border-slate-200 text-slate-800 font-semibold focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
-                />
-              </div>
+              <input
+                type="text"
+                value={clinicPhone}
+                onChange={(e) => setClinicPhone(e.target.value)}
+                placeholder="e.g. +91 98765 43210"
+                className="ui-input"
+              />
             </div>
 
             <div className="md:col-span-2">
-              <label className="block text-slate-600 font-bold mb-1">
+              <label className="block text-slate-700 font-semibold mb-1">
                 Clinic Physical Address <span className="text-rose-500">*</span>
               </label>
               <textarea
@@ -248,29 +245,31 @@ export const SettingsPage: React.FC<SettingsProps> = (props) => {
                 value={clinicAddress}
                 onChange={(e) => setClinicAddress(e.target.value)}
                 placeholder="Suite number, building, street, landmark, city"
-                className="w-full px-3.5 py-2.5 rounded-xl bg-slate-50 border border-slate-200 text-slate-800 font-semibold focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
+                className="ui-textarea"
               />
             </div>
 
             <div>
-              <label className="block text-slate-600 font-bold mb-1">
+              <label className="block text-slate-700 font-semibold mb-1">
                 Timezone
               </label>
-              <select
+              <SearchableSelect
+                size="md"
                 value={timezone}
-                onChange={(e) => setTimezone(e.target.value)}
-                className="w-full px-3.5 py-2.5 rounded-xl bg-slate-50 border border-slate-200 text-slate-800 font-semibold focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
-              >
-                <option value="Asia/Kolkata">Asia/Kolkata (IST +5:30)</option>
-                <option value="Asia/Dubai">Asia/Dubai (GST +4:00)</option>
-                <option value="Europe/London">Europe/London (GMT/BST)</option>
-                <option value="America/New_York">America/New_York (EST/EDT)</option>
-                <option value="UTC">UTC (Universal)</option>
-              </select>
+                onChange={(val) => setTimezone(val)}
+                placeholder="Select timezone..."
+                options={[
+                  { value: 'Asia/Kolkata', label: 'Asia/Kolkata (IST +5:30)' },
+                  { value: 'Asia/Dubai', label: 'Asia/Dubai (GST +4:00)' },
+                  { value: 'Europe/London', label: 'Europe/London (GMT/BST)' },
+                  { value: 'America/New_York', label: 'America/New_York (EST/EDT)' },
+                  { value: 'UTC', label: 'UTC (Universal)' },
+                ]}
+              />
             </div>
 
             <div>
-              <label className="block text-slate-600 font-bold mb-1">
+              <label className="block text-slate-700 font-semibold mb-1">
                 Consultation Timings
               </label>
               <input
@@ -278,7 +277,7 @@ export const SettingsPage: React.FC<SettingsProps> = (props) => {
                 value={consultationHours}
                 onChange={(e) => setConsultationHours(e.target.value)}
                 placeholder="e.g. Mon-Sat: 9:00 AM - 1:00 PM, 4:00 PM - 7:30 PM"
-                className="w-full px-3.5 py-2.5 rounded-xl bg-slate-50 border border-slate-200 text-slate-800 font-semibold focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
+                className="ui-input"
               />
             </div>
           </div>
@@ -287,9 +286,9 @@ export const SettingsPage: React.FC<SettingsProps> = (props) => {
             <button
               type="submit"
               disabled={isSavingClinic}
-              className="px-5 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs transition shadow-sm flex items-center gap-2 disabled:opacity-50"
+              className="ui-btn-primary"
             >
-              <Save className="w-4 h-4" />
+              <Save className="w-3.5 h-3.5" />
               {isSavingClinic ? 'Saving...' : 'Save Clinic Profile'}
             </button>
           </div>
@@ -298,7 +297,7 @@ export const SettingsPage: React.FC<SettingsProps> = (props) => {
 
       {/* Tab 2: User Account & Password */}
       {activeTab === 'profile' && (
-        <form onSubmit={handleSaveProfile} className="bg-white rounded-2xl p-6 border border-slate-200/80 shadow-sm space-y-5">
+        <form onSubmit={handleSaveProfile} className="ui-card space-y-4">
           <div className="flex items-center justify-between pb-3 border-b border-slate-100">
             <h3 className="font-bold text-slate-900 text-sm flex items-center gap-2">
               <User className="w-4 h-4 text-indigo-600" /> Admin Account Profile
@@ -308,30 +307,26 @@ export const SettingsPage: React.FC<SettingsProps> = (props) => {
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-xs">
             <div>
-              <label className="block text-slate-600 font-bold mb-1">
-                Username
-              </label>
+              <label className="ui-label">Username</label>
               <input
                 type="text"
                 readOnly
                 value={currentUser?.username || ''}
-                className="w-full px-3.5 py-2.5 rounded-xl bg-slate-100 border border-slate-200 text-slate-500 font-mono cursor-not-allowed"
+                className="ui-input bg-slate-100 text-slate-500 font-mono cursor-not-allowed"
               />
               <span className="text-[10px] text-slate-400 mt-1 block">Username cannot be changed.</span>
             </div>
 
             <div>
-              <label className="block text-slate-600 font-bold mb-1">
-                Account Role
-              </label>
-              <div className="px-3.5 py-2.5 rounded-xl bg-slate-100 border border-slate-200 text-slate-700 font-bold flex items-center gap-2">
+              <label className="ui-label">Account Role</label>
+              <div className="h-9 px-3 rounded-lg bg-slate-100 border border-slate-200 text-slate-700 font-semibold flex items-center gap-2">
                 <ShieldCheck className="w-4 h-4 text-indigo-600" />
                 <span>{currentUser?.role || 'CLINIC_ADMIN'}</span>
               </div>
             </div>
 
             <div className="md:col-span-2">
-              <label className="block text-slate-600 font-bold mb-1">
+              <label className="ui-label">
                 Full Name <span className="text-rose-500">*</span>
               </label>
               <input
@@ -340,33 +335,33 @@ export const SettingsPage: React.FC<SettingsProps> = (props) => {
                 value={fullName}
                 onChange={(e) => setFullName(e.target.value)}
                 placeholder="e.g. Dr. Jane Doe"
-                className="w-full px-3.5 py-2.5 rounded-xl bg-slate-50 border border-slate-200 text-slate-800 font-semibold focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
+                className="ui-input"
               />
             </div>
 
             <div className="pt-2 md:col-span-2 border-t border-slate-100">
-              <h4 className="font-bold text-slate-800 text-xs flex items-center gap-1.5 mb-3">
+              <h4 className="font-bold text-slate-800 text-xs flex items-center gap-1.5 mb-2.5">
                 <Lock className="w-3.5 h-3.5 text-indigo-600" /> Change Password (Leave blank to keep current)
               </h4>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-slate-500 font-semibold mb-1">New Password</label>
+                  <label className="ui-label text-slate-600">New Password</label>
                   <input
                     type="password"
                     value={newPassword}
                     onChange={(e) => setNewPassword(e.target.value)}
                     placeholder="Min 6 characters"
-                    className="w-full px-3.5 py-2 rounded-xl bg-slate-50 border border-slate-200 text-slate-800 font-medium focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
+                    className="ui-input"
                   />
                 </div>
                 <div>
-                  <label className="block text-slate-500 font-semibold mb-1">Confirm New Password</label>
+                  <label className="ui-label text-slate-600">Confirm New Password</label>
                   <input
                     type="password"
                     value={confirmPassword}
                     onChange={(e) => setConfirmPassword(e.target.value)}
                     placeholder="Re-enter new password"
-                    className="w-full px-3.5 py-2 rounded-xl bg-slate-50 border border-slate-200 text-slate-800 font-medium focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
+                    className="ui-input"
                   />
                 </div>
               </div>
@@ -377,9 +372,9 @@ export const SettingsPage: React.FC<SettingsProps> = (props) => {
             <button
               type="submit"
               disabled={isSavingProfile}
-              className="px-5 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs transition shadow-sm flex items-center gap-2 disabled:opacity-50"
+              className="ui-btn-primary"
             >
-              <Save className="w-4 h-4" />
+              <Save className="w-3.5 h-3.5" />
               {isSavingProfile ? 'Updating...' : 'Update Profile & Password'}
             </button>
           </div>

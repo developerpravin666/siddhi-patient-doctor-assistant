@@ -23,6 +23,7 @@ import {
 } from '../api/client';
 import { Specialization } from '../types';
 import { SearchableSelect } from '../components/SearchableSelect';
+import { clearOrValidateField } from '../utils/validation';
 
 const doctorSchema = z.object({
   name: z.string().trim().min(2, 'Doctor name must be at least 2 characters').max(100, 'Name cannot exceed 100 characters'),
@@ -67,6 +68,51 @@ function generateSlots(startHour: number, startMin: number, endHour: number, end
   return slots;
 }
 
+// Parse "09:30 AM" or "04:15 PM" into total minutes from midnight
+function parseSlotMinutes(slotStr: string): number | null {
+  const match = slotStr.trim().match(/^(\d{1,2}):(\d{2})\s*(AM|PM)$/i);
+  if (!match) return null;
+  let h = parseInt(match[1], 10);
+  const m = parseInt(match[2], 10);
+  const mer = match[3].toUpperCase();
+  if (mer === 'AM' && h === 12) h = 0;
+  if (mer === 'PM' && h !== 12) h += 12;
+  return h * 60 + m;
+}
+
+function minsToHHMM(totalMins: number): string {
+  const clamped = Math.max(0, Math.min(23 * 60 + 59, totalMins));
+  const h = Math.floor(clamped / 60);
+  const m = clamped % 60;
+  return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
+}
+
+function inferRangeFromSlots(slotsCsv: string | null | undefined, intervalMins: number, fallbackFrom: string, fallbackTo: string): { from: string; to: string } {
+  if (!slotsCsv || !slotsCsv.trim()) {
+    return { from: '', to: '' };
+  }
+  const parts = slotsCsv.split(',').map((s) => s.trim()).filter(Boolean);
+  if (parts.length === 0) return { from: fallbackFrom, to: fallbackTo };
+  const firstMins = parseSlotMinutes(parts[0]);
+  const lastMins = parseSlotMinutes(parts[parts.length - 1]);
+  if (firstMins === null || lastMins === null) {
+    return { from: fallbackFrom, to: fallbackTo };
+  }
+  return {
+    from: minsToHHMM(firstMins),
+    to: minsToHHMM(lastMins + (intervalMins || 15)),
+  };
+}
+
+function generateSlotsFromRange(fromTime: string, toTime: string, intervalMins: number): string {
+  if (!fromTime || !toTime) return '';
+  const [fh, fm] = fromTime.split(':').map(Number);
+  const [th, tm] = toTime.split(':').map(Number);
+  if (isNaN(fh) || isNaN(fm) || isNaN(th) || isNaN(tm)) return '';
+  if (fh * 60 + fm >= th * 60 + tm) return '';
+  return generateSlots(fh, fm, th, tm, intervalMins).join(', ');
+}
+
 export const DoctorForm: React.FC = () => {
   const { id } = useParams<{ id: string }>();
   const isEditMode = Boolean(id);
@@ -78,14 +124,20 @@ export const DoctorForm: React.FC = () => {
   const [errorMessage, setErrorMessage] = useState('');
   const [formErrors, setFormErrors] = useState<Record<string, string>>({});
 
+  // Session From/To time pickers
+  const [morningFrom, setMorningFrom] = useState('09:00');
+  const [morningTo, setMorningTo] = useState('13:00');
+  const [eveningFrom, setEveningFrom] = useState('16:00');
+  const [eveningTo, setEveningTo] = useState('19:30');
+
   // Form Fields
   const [formData, setFormData] = useState<DoctorFormData>({
     name: '',
     specialties: [],
     available_days: 'Mon,Tue,Wed,Thu,Fri,Sat',
     slot_duration_minutes: 15,
-    morning_slots: '09:00 AM, 09:30 AM, 10:00 AM, 10:30 AM, 11:00 AM, 11:30 AM, 12:00 PM, 12:30 PM',
-    evening_slots: '04:00 PM, 04:30 PM, 05:00 PM, 05:30 PM, 06:00 PM, 06:30 PM, 07:00 PM',
+    morning_slots: generateSlots(9, 0, 13, 0, 15).join(', '),
+    evening_slots: generateSlots(16, 0, 19, 30, 15).join(', '),
     is_active: true,
   });
 
@@ -107,16 +159,24 @@ export const DoctorForm: React.FC = () => {
 
         if (isEditMode && id) {
           const doc = await getDoctor(id);
+          const interval = doc.slot_duration_minutes || 15;
           // Split comma-separated specialties
           const parsedSpecialties = doc.specialty
             ? doc.specialty.split(',').map((s) => s.trim()).filter(Boolean)
             : [];
 
+          const mRange = inferRangeFromSlots(doc.morning_slots, interval, '09:00', '13:00');
+          const eRange = inferRangeFromSlots(doc.evening_slots, interval, '16:00', '19:30');
+          setMorningFrom(mRange.from);
+          setMorningTo(mRange.to);
+          setEveningFrom(eRange.from);
+          setEveningTo(eRange.to);
+
           setFormData({
             name: doc.name,
             specialties: parsedSpecialties,
             available_days: doc.available_days || 'Mon,Tue,Wed,Thu,Fri,Sat',
-            slot_duration_minutes: doc.slot_duration_minutes || 15,
+            slot_duration_minutes: interval,
             morning_slots: doc.morning_slots || '',
             evening_slots: doc.evening_slots || '',
             is_active: doc.is_active,
@@ -132,15 +192,43 @@ export const DoctorForm: React.FC = () => {
     initData();
   }, [id, isEditMode]);
 
-  // Regenerate Morning & Evening slots using current slot_duration_minutes
-  const handleRegenerateSlots = (interval: number) => {
-    const morning = generateSlots(9, 0, 13, 0, interval).join(', ');
-    const evening = generateSlots(16, 0, 19, 30, interval).join(', ');
+  // Regenerate Morning & Evening slots using selected From/To times and interval
+  const handleRegenerateSlots = (
+    interval: number,
+    mFrom = morningFrom,
+    mTo = morningTo,
+    eFrom = eveningFrom,
+    eTo = eveningTo
+  ) => {
+    const morning = generateSlotsFromRange(mFrom, mTo, interval);
+    const evening = generateSlotsFromRange(eFrom, eTo, interval);
     setFormData((prev) => ({
       ...prev,
       slot_duration_minutes: interval,
       morning_slots: morning,
       evening_slots: evening,
+    }));
+  };
+
+  const handleMorningTimeChange = (which: 'from' | 'to', value: string) => {
+    const nextFrom = which === 'from' ? value : morningFrom;
+    const nextTo = which === 'to' ? value : morningTo;
+    if (which === 'from') setMorningFrom(value);
+    else setMorningTo(value);
+    setFormData((prev) => ({
+      ...prev,
+      morning_slots: generateSlotsFromRange(nextFrom, nextTo, prev.slot_duration_minutes),
+    }));
+  };
+
+  const handleEveningTimeChange = (which: 'from' | 'to', value: string) => {
+    const nextFrom = which === 'from' ? value : eveningFrom;
+    const nextTo = which === 'to' ? value : eveningTo;
+    if (which === 'from') setEveningFrom(value);
+    else setEveningTo(value);
+    setFormData((prev) => ({
+      ...prev,
+      evening_slots: generateSlotsFromRange(nextFrom, nextTo, prev.slot_duration_minutes),
     }));
   };
 
@@ -234,28 +322,28 @@ export const DoctorForm: React.FC = () => {
   }
 
   return (
-    <div className="max-w-4xl mx-auto space-y-6">
+    <div className="w-full space-y-3.5">
       {/* Top Header */}
-      <div className="flex items-center justify-between gap-4 pb-4 border-b border-slate-200">
-        <div className="flex items-center gap-3">
+      <div className="flex items-center justify-between gap-3 pb-3 border-b border-slate-200">
+        <div className="flex items-center gap-2.5">
           <Link
             to="/doctors"
-            className="p-2 text-slate-500 hover:text-slate-800 hover:bg-slate-100 rounded-xl transition"
+            className="p-1.5 text-slate-500 hover:text-slate-800 hover:bg-slate-100 rounded-lg transition"
             title="Back to Doctors"
           >
-            <ArrowLeft className="w-5 h-5" />
+            <ArrowLeft className="w-4 h-4" />
           </Link>
           <div>
             <div className="flex items-center gap-2">
-              <span className="p-2 bg-indigo-50 text-indigo-600 rounded-xl">
-                <Stethoscope className="w-5 h-5" />
+              <span className="p-1.5 bg-indigo-50 text-indigo-600 rounded-lg">
+                <Stethoscope className="w-4 h-4" />
               </span>
-              <h1 className="text-2xl font-bold text-slate-900">
+              <h1 className="text-lg font-bold text-slate-900">
                 {isEditMode ? 'Edit Doctor Profile & Schedule' : 'Add New Doctor Profile'}
               </h1>
             </div>
             <p className="text-xs text-slate-500 mt-0.5">
-              Configure doctor specializations from the master catalog, consultation time intervals, and working schedules.
+              Configure specializations, consultation intervals, and working schedules.
             </p>
           </div>
         </div>
@@ -263,7 +351,7 @@ export const DoctorForm: React.FC = () => {
         <button
           type="button"
           onClick={() => navigate('/doctors')}
-          className="px-4 py-2 text-sm text-slate-600 hover:text-slate-800 border border-slate-200 rounded-xl hover:bg-slate-50 transition"
+          className="ui-btn-secondary"
         >
           Cancel
         </button>
@@ -271,48 +359,49 @@ export const DoctorForm: React.FC = () => {
 
       {/* Error Alert */}
       {errorMessage && (
-        <div className="p-4 bg-rose-50 border border-rose-200 text-rose-800 rounded-xl text-sm flex items-center gap-2.5">
-          <AlertCircle className="w-5 h-5 text-rose-600 flex-shrink-0" />
+        <div className="p-3 bg-rose-50 border border-rose-200 text-rose-800 rounded-lg text-xs flex items-center gap-2">
+          <AlertCircle className="w-4 h-4 text-rose-600 flex-shrink-0" />
           <span>{errorMessage}</span>
         </div>
       )}
 
       {/* Doctor Form */}
-      <form onSubmit={handleSubmit} className="space-y-6">
+      <form onSubmit={handleSubmit} className="space-y-4">
         {/* Step 1: Doctor Personal Info & Status */}
-        <div className="bg-white border border-slate-200 rounded-2xl p-6 shadow-sm space-y-5">
-          <h2 className="text-base font-bold text-slate-800 flex items-center gap-2 pb-3 border-b border-slate-100">
+        <div className="ui-card space-y-3.5">
+          <h2 className="text-sm font-bold text-slate-800 flex items-center gap-2 pb-2 border-b border-slate-100">
             <User className="w-4 h-4 text-indigo-600" />
             Doctor Information
           </h2>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div>
-              <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5">
+              <label className="ui-label">
                 Doctor Full Name <span className="text-rose-500">*</span>
               </label>
               <div className="relative">
-                <User className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
+                <User className="w-3.5 h-3.5 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
                 <input
                   type="text"
                   placeholder="e.g. Dr. Rajesh Sharma, MD"
                   value={formData.name}
-                  onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                  className={`w-full pl-10 pr-4 py-2.5 rounded-xl border ${formErrors.name ? 'border-rose-400 bg-rose-50' : 'border-slate-300'
-                    } text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500`}
+                  onChange={(e) => {
+                    const val = e.target.value;
+                    setFormData({ ...formData, name: val });
+                    setFormErrors((prev) => clearOrValidateField(doctorSchema, 'name', val, prev));
+                  }}
+                  className={`ui-input pl-8 ${formErrors.name ? 'border-rose-400 bg-rose-50' : ''}`}
                 />
               </div>
               {formErrors.name && (
-                <p className="text-xs text-rose-600 mt-1 font-medium">{formErrors.name}</p>
+                <p className="text-[11px] text-rose-600 mt-1 font-medium">{formErrors.name}</p>
               )}
             </div>
 
             <div>
-              <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5">
-                Active Status
-              </label>
-              <div className="flex items-center gap-5 pt-2">
-                <label className="flex items-center gap-2 cursor-pointer text-sm font-medium text-slate-700">
+              <label className="ui-label">Active Status</label>
+              <div className="flex items-center gap-4 h-9">
+                <label className="flex items-center gap-1.5 cursor-pointer text-xs font-medium text-slate-700">
                   <input
                     type="radio"
                     name="is_active"
@@ -322,7 +411,7 @@ export const DoctorForm: React.FC = () => {
                   />
                   Active (Receiving Appointments)
                 </label>
-                <label className="flex items-center gap-2 cursor-pointer text-sm font-medium text-slate-700">
+                <label className="flex items-center gap-1.5 cursor-pointer text-xs font-medium text-slate-700">
                   <input
                     type="radio"
                     name="is_active"
@@ -338,22 +427,22 @@ export const DoctorForm: React.FC = () => {
         </div>
 
         {/* Step 2: Multiple Specializations from Master */}
-        <div className="bg-white border border-slate-200 rounded-2xl p-6 shadow-sm space-y-4">
-          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 pb-3 border-b border-slate-100">
+        <div className="ui-card space-y-3">
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 pb-2 border-b border-slate-100">
             <div>
-              <h2 className="text-base font-bold text-slate-800 flex items-center gap-2">
+              <h2 className="text-sm font-bold text-slate-800 flex items-center gap-2">
                 <Layers className="w-4 h-4 text-indigo-600" />
-                Medical Specializations (From Master Catalog) <span className="text-rose-500">*</span>
+                Medical Specializations <span className="text-rose-500">*</span>
               </h2>
-              <p className="text-xs text-slate-500 mt-0.5">
-                A doctor can hold multiple credentials. Pick all applicable specialties from the master list.
+              <p className="text-[11px] text-slate-500 mt-0.5">
+                Pick all applicable specialties from the master catalog.
               </p>
             </div>
 
             <Link
               to="/specializations"
               target="_blank"
-              className="inline-flex items-center gap-1.5 text-xs font-semibold text-indigo-600 hover:text-indigo-800 bg-indigo-50 px-3 py-1.5 rounded-lg transition"
+              className="inline-flex items-center gap-1 text-xs font-semibold text-indigo-600 hover:text-indigo-800 bg-indigo-50 px-2.5 py-1 rounded-lg transition"
             >
               <Plus className="w-3.5 h-3.5" />
               Manage Specializations Master
@@ -365,15 +454,15 @@ export const DoctorForm: React.FC = () => {
           )}
 
           {/* Specialization Checkbox Grid */}
-          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2.5">
+          <div className="grid grid-cols-2 sm:grid-cols-4 md:grid-cols-6 gap-2">
             {specializationsMaster.map((spec) => {
               const isChecked = formData.specialties.includes(spec.name);
               return (
                 <label
                   key={spec.id}
                   onClick={() => handleToggleSpecialty(spec.name)}
-                  className={`flex items-center gap-2.5 p-3 rounded-xl border cursor-pointer transition select-none text-xs font-semibold ${isChecked
-                      ? 'bg-indigo-50 border-indigo-300 text-indigo-900 shadow-xs ring-1 ring-indigo-200'
+                  className={`flex items-center gap-2 px-2.5 py-2 rounded-lg border cursor-pointer transition select-none text-xs font-medium ${isChecked
+                      ? 'bg-indigo-50 border-indigo-300 text-indigo-900 ring-1 ring-indigo-200'
                       : 'bg-white border-slate-200 text-slate-700 hover:bg-slate-50'
                     }`}
                 >
@@ -381,9 +470,9 @@ export const DoctorForm: React.FC = () => {
                     type="checkbox"
                     checked={isChecked}
                     onChange={() => { }}
-                    className="w-4 h-4 text-indigo-600 rounded border-slate-300 focus:ring-indigo-500 cursor-pointer"
+                    className="w-3.5 h-3.5 text-indigo-600 rounded border-slate-300 focus:ring-indigo-500 cursor-pointer"
                   />
-                  <span>{spec.name}</span>
+                  <span className="truncate">{spec.name}</span>
                 </label>
               );
             })}
@@ -413,33 +502,31 @@ export const DoctorForm: React.FC = () => {
         </div>
 
         {/* Step 3: Time Margin Between Patients & Slot Duration */}
-        <div className="bg-white border border-slate-200 rounded-2xl p-6 shadow-sm space-y-5">
-          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 pb-3 border-b border-slate-100">
+        <div className="ui-card space-y-4">
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 pb-2 border-b border-slate-100">
             <div>
-              <h2 className="text-base font-bold text-slate-800 flex items-center gap-2">
+              <h2 className="text-sm font-bold text-slate-800 flex items-center gap-2">
                 <Clock className="w-4 h-4 text-indigo-600" />
-                Time Margin Between Patients & Slot Duration <span className="text-rose-500">*</span>
+                Schedule, Working Days & Slot Duration <span className="text-rose-500">*</span>
               </h2>
-              <p className="text-xs text-slate-500 mt-0.5">
-                Configured at doctor level (5, 10, 15, 20, 30 min). Determines interval for generated patient booking slots.
+              <p className="text-[11px] text-slate-500 mt-0.5">
+                Determines interval (5–30 min) and available days for patient booking slots.
               </p>
             </div>
 
             <button
               type="button"
               onClick={() => handleRegenerateSlots(formData.slot_duration_minutes)}
-              className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-indigo-50 text-indigo-700 hover:bg-indigo-100 rounded-xl text-xs font-bold transition"
+              className="inline-flex items-center gap-1.5 px-2.5 py-1 bg-indigo-50 text-indigo-700 hover:bg-indigo-100 rounded-lg text-xs font-semibold transition"
             >
               <Zap className="w-3.5 h-3.5 text-indigo-600" />
-              Auto-Generate Slots for {formData.slot_duration_minutes}m
+              Auto-Generate Slots ({formData.slot_duration_minutes}m)
             </button>
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div>
-              <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5">
-                Consultation Interval / Patient Gap
-              </label>
+              <label className="ui-label">Consultation Interval / Patient Gap</label>
               <SearchableSelect
                 value={formData.slot_duration_minutes}
                 onChange={(val) => {
@@ -454,14 +541,14 @@ export const DoctorForm: React.FC = () => {
               />
               <p className="text-[11px] text-slate-400 mt-1 flex items-center gap-1">
                 <Info className="w-3 h-3 text-slate-400" />
-                Changing the interval automatically generates standard morning and evening slots below.
+                Changing interval regenerates morning and evening slots below.
               </p>
             </div>
 
             {/* Available Working Days */}
             <div>
-              <div className="flex items-center justify-between mb-1.5">
-                <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider">
+              <div className="flex items-center justify-between mb-1">
+                <label className="ui-label mb-0">
                   Available Working Days <span className="text-rose-500">*</span>
                 </label>
                 <div className="flex items-center gap-1.5">
@@ -499,7 +586,7 @@ export const DoctorForm: React.FC = () => {
                       key={day}
                       type="button"
                       onClick={() => handleToggleDay(day)}
-                      className={`px-3 py-1.5 rounded-xl text-xs font-bold transition border ${isActive
+                      className={`px-2.5 py-1 rounded-lg text-xs font-semibold transition border ${isActive
                           ? 'bg-indigo-600 text-white border-indigo-600'
                           : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-50'
                         }`}
@@ -510,58 +597,120 @@ export const DoctorForm: React.FC = () => {
                 })}
               </div>
               {formErrors.available_days && (
-                <p className="text-xs text-rose-600 mt-1 font-medium">{formErrors.available_days}</p>
+                <p className="text-[11px] text-rose-600 mt-1 font-medium">{formErrors.available_days}</p>
               )}
             </div>
           </div>
 
-          {/* Morning & Evening Slot Textareas */}
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-5 pt-3 border-t border-slate-100">
-            <div>
-              <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5">
-                Morning Consultation Slots (09:00 AM - 01:00 PM)
-              </label>
-              <textarea
-                rows={3}
-                placeholder="09:00 AM, 09:15 AM, 09:30 AM..."
-                value={formData.morning_slots || ''}
-                onChange={(e) => setFormData({ ...formData, morning_slots: e.target.value })}
-                className="w-full px-3.5 py-2 rounded-xl border border-slate-300 text-xs font-mono focus:outline-none focus:ring-2 focus:ring-indigo-500"
-              />
-              <p className="text-[11px] text-slate-400 mt-0.5">Comma-separated time slots.</p>
+          {/* Morning & Evening From/To Time Pickers + Split Slots Preview */}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-2.5 border-t border-slate-100">
+            {/* Morning Session */}
+            <div className="p-3 rounded-lg bg-amber-50/40 border border-amber-200/70 space-y-2">
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-bold text-slate-800 flex items-center gap-1.5">
+                  <span className="w-2 h-2 rounded-full bg-amber-400"></span>
+                  Morning Session
+                </span>
+                <span className="text-[11px] font-semibold text-amber-800 bg-amber-100 px-2 py-0.5 rounded-full">
+                  {formData.morning_slots ? formData.morning_slots.split(',').filter((s) => s.trim()).length : 0} slots
+                </span>
+              </div>
+
+              <div className="grid grid-cols-2 gap-2">
+                <div>
+                  <label className="ui-label text-[11px]">From Time</label>
+                  <input
+                    type="time"
+                    value={morningFrom}
+                    onChange={(e) => handleMorningTimeChange('from', e.target.value)}
+                    className="ui-input"
+                  />
+                </div>
+                <div>
+                  <label className="ui-label text-[11px]">To Time</label>
+                  <input
+                    type="time"
+                    value={morningTo}
+                    onChange={(e) => handleMorningTimeChange('to', e.target.value)}
+                    className="ui-input"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="ui-label text-[11px]">Split Slots (Auto-generated by {formData.slot_duration_minutes}m)</label>
+                <textarea
+                  rows={2}
+                  placeholder="Select From & To time above to generate slots..."
+                  value={formData.morning_slots || ''}
+                  onChange={(e) => setFormData({ ...formData, morning_slots: e.target.value })}
+                  className="ui-textarea font-mono bg-white"
+                />
+              </div>
             </div>
 
-            <div>
-              <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5">
-                Evening Consultation Slots (04:00 PM - 07:30 PM)
-              </label>
-              <textarea
-                rows={3}
-                placeholder="04:00 PM, 04:15 PM, 04:30 PM..."
-                value={formData.evening_slots || ''}
-                onChange={(e) => setFormData({ ...formData, evening_slots: e.target.value })}
-                className="w-full px-3.5 py-2 rounded-xl border border-slate-300 text-xs font-mono focus:outline-none focus:ring-2 focus:ring-indigo-500"
-              />
-              <p className="text-[11px] text-slate-400 mt-0.5">Comma-separated time slots.</p>
+            {/* Evening Session */}
+            <div className="p-3 rounded-lg bg-indigo-50/40 border border-indigo-200/70 space-y-2">
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-bold text-slate-800 flex items-center gap-1.5">
+                  <span className="w-2 h-2 rounded-full bg-indigo-500"></span>
+                  Evening Session
+                </span>
+                <span className="text-[11px] font-semibold text-indigo-800 bg-indigo-100 px-2 py-0.5 rounded-full">
+                  {formData.evening_slots ? formData.evening_slots.split(',').filter((s) => s.trim()).length : 0} slots
+                </span>
+              </div>
+
+              <div className="grid grid-cols-2 gap-2">
+                <div>
+                  <label className="ui-label text-[11px]">From Time</label>
+                  <input
+                    type="time"
+                    value={eveningFrom}
+                    onChange={(e) => handleEveningTimeChange('from', e.target.value)}
+                    className="ui-input"
+                  />
+                </div>
+                <div>
+                  <label className="ui-label text-[11px]">To Time</label>
+                  <input
+                    type="time"
+                    value={eveningTo}
+                    onChange={(e) => handleEveningTimeChange('to', e.target.value)}
+                    className="ui-input"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="ui-label text-[11px]">Split Slots (Auto-generated by {formData.slot_duration_minutes}m)</label>
+                <textarea
+                  rows={2}
+                  placeholder="Select From & To time above to generate slots..."
+                  value={formData.evening_slots || ''}
+                  onChange={(e) => setFormData({ ...formData, evening_slots: e.target.value })}
+                  className="ui-textarea font-mono bg-white"
+                />
+              </div>
             </div>
           </div>
         </div>
 
         {/* Form Actions */}
-        <div className="flex items-center justify-end gap-3 pt-2">
+        <div className="flex items-center justify-end gap-2.5 pt-1">
           <button
             type="button"
             onClick={() => navigate('/doctors')}
-            className="px-5 py-2.5 border border-slate-300 text-slate-700 rounded-xl text-sm font-semibold hover:bg-slate-50 transition"
+            className="ui-btn-secondary"
           >
             Cancel
           </button>
           <button
             type="submit"
             disabled={saving}
-            className="inline-flex items-center gap-2 px-6 py-2.5 bg-indigo-600 text-white rounded-xl text-sm font-semibold hover:bg-indigo-700 transition shadow-sm hover:shadow disabled:opacity-50"
+            className="ui-btn-primary"
           >
-            <Save className="w-4 h-4" />
+            <Save className="w-3.5 h-3.5" />
             {saving ? 'Saving...' : isEditMode ? 'Update Doctor Profile' : 'Save Doctor Profile'}
           </button>
         </div>

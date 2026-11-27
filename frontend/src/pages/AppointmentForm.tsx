@@ -23,13 +23,14 @@ import {
 } from '../api/client';
 import { Doctor, Patient } from '../types';
 import { SearchableSelect } from '../components/SearchableSelect';
+import { clearOrValidateField } from '../utils/validation';
 
 const appointmentSchema = z.object({
   patient_name: z.string().trim().min(2, 'Patient name must be at least 2 characters').max(120, 'Name cannot exceed 120 characters'),
   mobile_number: z.string().trim()
     .min(10, 'Mobile number must be at least 10 digits')
     .max(15, 'Mobile number cannot exceed 15 digits')
-    .regex(/^[0-9+\s-]+$/, 'Mobile number can only contain digits, spaces, and hyphens'),
+    .regex(/^[0-9]+$/, 'Mobile number can only contain digits'),
   appointment_date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Please choose a valid appointment date (YYYY-MM-DD)'),
   doctor_id: z.string().min(1, 'Please select a doctor'),
   time_slot: z.string().min(1, 'Please select an available time slot'),
@@ -270,7 +271,7 @@ export const AppointmentForm: React.FC = () => {
   }
 
   return (
-    <div className="max-w-4xl mx-auto space-y-6">
+    <div className="w-full space-y-3.5">
       {/* Top Header */}
       <div className="flex items-center justify-between gap-4 pb-4 border-b border-slate-200">
         <div className="flex items-center gap-3">
@@ -299,7 +300,7 @@ export const AppointmentForm: React.FC = () => {
         <button
           type="button"
           onClick={() => navigate('/appointments')}
-          className="px-4 py-2 text-sm text-slate-600 hover:text-slate-800 border border-slate-200 rounded-xl hover:bg-slate-50 transition"
+          className="ui-btn-secondary"
         >
           Cancel
         </button>
@@ -307,18 +308,18 @@ export const AppointmentForm: React.FC = () => {
 
       {/* Error Alert */}
       {errorMessage && (
-        <div className="p-4 bg-rose-50 border border-rose-200 text-rose-800 rounded-xl text-sm flex items-center gap-2.5">
-          <AlertCircle className="w-5 h-5 text-rose-600 flex-shrink-0" />
+        <div className="p-3 bg-rose-50 border border-rose-200 text-rose-800 rounded-lg text-xs flex items-center gap-2">
+          <AlertCircle className="w-4 h-4 text-rose-600 flex-shrink-0" />
           <span>{errorMessage}</span>
         </div>
       )}
 
       {/* Booking Form */}
-      <form onSubmit={handleSubmit} className="space-y-6">
+      <form onSubmit={handleSubmit} className="space-y-4">
         {/* Step 1: Patient Information */}
-        <div className="bg-white border border-slate-200 rounded-2xl p-6 shadow-sm space-y-5">
-          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 pb-3 border-b border-slate-100">
-            <h2 className="text-base font-bold text-slate-800 flex items-center gap-2">
+        <div className="ui-card space-y-4">
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 pb-2.5 border-b border-slate-100">
+            <h2 className="text-sm font-bold text-slate-800 flex items-center gap-2">
               <User className="w-4 h-4 text-indigo-600" />
               Patient Contact Information
             </h2>
@@ -327,7 +328,7 @@ export const AppointmentForm: React.FC = () => {
             {patients.length > 0 && !isEditMode && (
               <div className="flex items-center gap-2">
                 <span className="text-xs text-slate-500 font-medium shrink-0">Or pick existing:</span>
-                <div className="w-64">
+                <div className="w-60">
                   <SearchableSelect
                     size="sm"
                     placeholder="-- Choose Patient --"
@@ -347,46 +348,54 @@ export const AppointmentForm: React.FC = () => {
             )}
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div>
-              <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5">
+              <label className="ui-label">
                 Patient Full Name <span className="text-rose-500">*</span>
               </label>
               <div className="relative">
-                <User className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
+                <User className="w-3.5 h-3.5 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
                 <input
                   type="text"
                   placeholder="e.g. Ramesh Patel"
                   value={formData.patient_name}
-                  onChange={(e) => setFormData({ ...formData, patient_name: e.target.value })}
-                  className={`w-full pl-10 pr-4 py-2.5 rounded-xl border ${
-                    formErrors.patient_name ? 'border-rose-400 bg-rose-50' : 'border-slate-300'
-                  } text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500`}
+                  onChange={(e) => {
+                    const val = e.target.value;
+                    setFormData({ ...formData, patient_name: val });
+                    setFormErrors((prev) => clearOrValidateField(appointmentSchema, 'patient_name', val, prev));
+                  }}
+                  className={`ui-input pl-8 ${
+                    formErrors.patient_name ? 'border-rose-400 bg-rose-50' : ''
+                  }`}
                 />
               </div>
               {formErrors.patient_name && (
-                <p className="text-xs text-rose-600 mt-1 font-medium">{formErrors.patient_name}</p>
+                <p className="text-[11px] text-rose-600 mt-1 font-medium">{formErrors.patient_name}</p>
               )}
             </div>
 
             <div>
-              <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5">
+              <label className="ui-label">
                 Mobile Number <span className="text-rose-500">*</span>
               </label>
               <div className="relative">
-                <Phone className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
+                <Phone className="w-3.5 h-3.5 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
                 <input
                   type="text"
                   placeholder="e.g. 9876543210"
                   value={formData.mobile_number}
-                  onChange={(e) => setFormData({ ...formData, mobile_number: e.target.value })}
-                  className={`w-full pl-10 pr-4 py-2.5 rounded-xl border ${
-                    formErrors.mobile_number ? 'border-rose-400 bg-rose-50' : 'border-slate-300'
-                  } text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500`}
+                  onChange={(e) => {
+                    const val = e.target.value;
+                    setFormData({ ...formData, mobile_number: val });
+                    setFormErrors((prev) => clearOrValidateField(appointmentSchema, 'mobile_number', val, prev));
+                  }}
+                  className={`ui-input pl-8 ${
+                    formErrors.mobile_number ? 'border-rose-400 bg-rose-50' : ''
+                  }`}
                 />
               </div>
               {formErrors.mobile_number && (
-                <p className="text-xs text-rose-600 mt-1 font-medium">{formErrors.mobile_number}</p>
+                <p className="text-[11px] text-rose-600 mt-1 font-medium">{formErrors.mobile_number}</p>
               )}
               <p className="text-[11px] text-slate-400 mt-1">
                 Used for automated WhatsApp appointment reminders and status updates.
@@ -436,15 +445,19 @@ export const AppointmentForm: React.FC = () => {
                 Appointment Date <span className="text-rose-500">*</span>
               </label>
               <div className="relative">
-                <Calendar className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
+                <Calendar className="w-3.5 h-3.5 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
                 <input
                   type="date"
                   min={todayStr}
                   value={formData.appointment_date}
-                  onChange={(e) => setFormData({ ...formData, appointment_date: e.target.value, time_slot: '' })}
-                  className={`w-full pl-10 pr-4 py-2.5 rounded-xl border ${
-                    formErrors.appointment_date ? 'border-rose-400 bg-rose-50' : 'border-slate-300'
-                  } text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500`}
+                  onChange={(e) => {
+                    const val = e.target.value;
+                    setFormData({ ...formData, appointment_date: val, time_slot: '' });
+                    setFormErrors((prev) => clearOrValidateField(appointmentSchema, 'appointment_date', val, prev));
+                  }}
+                  className={`ui-input pl-8 ${
+                    formErrors.appointment_date ? 'border-rose-400 bg-rose-50' : ''
+                  }`}
                 />
               </div>
               {formErrors.appointment_date && (
@@ -529,7 +542,7 @@ export const AppointmentForm: React.FC = () => {
                     <span className="w-2 h-2 rounded-full bg-amber-400"></span>
                     Morning Consultation Hours ({morningSlots.length} Open Slots)
                   </h3>
-                  <div className="grid grid-cols-2 sm:grid-cols-4 md:grid-cols-6 gap-2">
+                  <div className="grid grid-cols-3 sm:grid-cols-6 md:grid-cols-8 gap-1.5">
                     {morningSlots.map((slot) => {
                       const isSelected = formData.time_slot === slot;
                       return (
@@ -540,7 +553,7 @@ export const AppointmentForm: React.FC = () => {
                             setFormData({ ...formData, time_slot: slot });
                             setFormErrors((prev) => ({ ...prev, time_slot: '' }));
                           }}
-                          className={`px-3 py-2.5 rounded-xl text-xs font-semibold transition border text-center ${
+                          className={`px-2.5 py-1.5 rounded-lg text-xs font-semibold transition border text-center ${
                             isSelected
                               ? 'bg-indigo-600 text-white border-indigo-600 shadow-sm ring-2 ring-indigo-200'
                               : 'bg-white hover:bg-indigo-50/60 text-slate-700 border-slate-200 hover:border-indigo-300'
@@ -561,7 +574,7 @@ export const AppointmentForm: React.FC = () => {
                     <span className="w-2 h-2 rounded-full bg-indigo-500"></span>
                     Evening Consultation Hours ({eveningSlots.length} Open Slots)
                   </h3>
-                  <div className="grid grid-cols-2 sm:grid-cols-4 md:grid-cols-6 gap-2">
+                  <div className="grid grid-cols-3 sm:grid-cols-6 md:grid-cols-8 gap-1.5">
                     {eveningSlots.map((slot) => {
                       const isSelected = formData.time_slot === slot;
                       return (
@@ -572,7 +585,7 @@ export const AppointmentForm: React.FC = () => {
                             setFormData({ ...formData, time_slot: slot });
                             setFormErrors((prev) => ({ ...prev, time_slot: '' }));
                           }}
-                          className={`px-3 py-2.5 rounded-xl text-xs font-semibold transition border text-center ${
+                          className={`px-2.5 py-1.5 rounded-lg text-xs font-semibold transition border text-center ${
                             isSelected
                               ? 'bg-indigo-600 text-white border-indigo-600 shadow-sm ring-2 ring-indigo-200'
                               : 'bg-white hover:bg-indigo-50/60 text-slate-700 border-slate-200 hover:border-indigo-300'
@@ -590,18 +603,16 @@ export const AppointmentForm: React.FC = () => {
         </div>
 
         {/* Step 4: Status (for Edit) & Notes */}
-        <div className="bg-white border border-slate-200 rounded-2xl p-6 shadow-sm space-y-4">
-          <h2 className="text-base font-bold text-slate-800 flex items-center gap-2 pb-3 border-b border-slate-100">
+        <div className="ui-card space-y-3">
+          <h2 className="text-sm font-bold text-slate-800 flex items-center gap-2 pb-2 border-b border-slate-100">
             <FileText className="w-4 h-4 text-indigo-600" />
             Additional Details & Status
           </h2>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             {isEditMode && (
               <div>
-                <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5">
-                  Appointment Status
-                </label>
+                <label className="ui-label">Appointment Status</label>
                 <SearchableSelect
                   value={formData.status}
                   onChange={(val) => setFormData({ ...formData, status: val as any })}
@@ -617,35 +628,35 @@ export const AppointmentForm: React.FC = () => {
             )}
 
             <div className={isEditMode ? '' : 'md:col-span-2'}>
-              <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5">
-                Consultation Reason / Clinical Notes <span className="text-slate-400 text-xs font-normal">(Optional)</span>
+              <label className="ui-label">
+                Consultation Reason / Clinical Notes <span className="text-slate-400 font-normal">(Optional)</span>
               </label>
               <textarea
                 rows={2}
                 placeholder="e.g. Routine blood pressure checkup, dental cleaning, or symptoms description..."
                 value={formData.notes || ''}
                 onChange={(e) => setFormData({ ...formData, notes: e.target.value })}
-                className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                className="ui-textarea"
               />
             </div>
           </div>
         </div>
 
         {/* Form Actions */}
-        <div className="flex items-center justify-end gap-3 pt-2">
+        <div className="flex items-center justify-end gap-2.5 pt-1">
           <button
             type="button"
             onClick={() => navigate('/appointments')}
-            className="px-5 py-2.5 border border-slate-300 text-slate-700 rounded-xl text-sm font-semibold hover:bg-slate-50 transition"
+            className="ui-btn-secondary"
           >
             Cancel
           </button>
           <button
             type="submit"
             disabled={saving || !formData.time_slot}
-            className="inline-flex items-center gap-2 px-6 py-2.5 bg-indigo-600 text-white rounded-xl text-sm font-semibold hover:bg-indigo-700 transition shadow-sm hover:shadow disabled:opacity-50"
+            className="ui-btn-primary"
           >
-            <Save className="w-4 h-4" />
+            <Save className="w-3.5 h-3.5" />
             {saving ? 'Saving...' : isEditMode ? 'Update Appointment' : 'Confirm Booking'}
           </button>
         </div>

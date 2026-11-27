@@ -18,6 +18,7 @@ import { useOutletContext, useNavigate } from 'react-router-dom';
 import { Appointment, UserRole, AdminUser, AppContextType } from '../types';
 import { getAppointments, updateAppointmentStatus } from '../api/client';
 import { DataTable, ColumnDef } from '../components/DataTable';
+import { SearchableSelect } from '../components/SearchableSelect';
 import { useConfirm } from '../context/ConfirmationContext';
 
 interface AppointmentsProps {
@@ -597,26 +598,30 @@ export const Appointments: React.FC<AppointmentsProps> = (props) => {
         actionButton={
           <div className="flex items-center gap-2 flex-wrap">
             {/* Auto-Refresh Dropdown & Interval Selector (Requirements 5 & 6) */}
-            <div className="flex items-center gap-1.5 bg-slate-50 border border-slate-200 rounded-xl px-2.5 py-1.5 text-xs">
-              <Clock className="w-3.5 h-3.5 text-slate-500" />
-              <span className="text-slate-500 font-medium hidden sm:inline">Auto-refresh:</span>
-              <select
-                value={autoRefreshMinutes}
-                onChange={(e) => {
-                  const val = Number(e.target.value);
-                  setAutoRefreshMinutes(val);
-                  localStorage.setItem('siddhi_appointments_auto_refresh', String(val));
-                }}
-                className="bg-transparent font-bold text-slate-700 focus:outline-none cursor-pointer"
-                title="Select auto-refresh interval for appointments queue"
-              >
-                <option value={0}>Off</option>
-                <option value={1}>1 min</option>
-                <option value={5}>5 mins</option>
-                <option value={10}>10 mins</option>
-                <option value={15}>15 mins</option>
-                <option value={30}>30 mins</option>
-              </select>
+            <div className="flex items-center gap-1.5 bg-slate-50 border border-slate-200 rounded-lg px-2 py-1 text-xs">
+              <Clock className="w-3.5 h-3.5 text-slate-500 shrink-0" />
+              <span className="text-slate-500 font-medium hidden sm:inline whitespace-nowrap">Auto-refresh:</span>
+              <div className="w-24">
+                <SearchableSelect
+                  size="sm"
+                  searchable={false}
+                  value={autoRefreshMinutes}
+                  onChange={(val) => {
+                    const num = Number(val);
+                    setAutoRefreshMinutes(num);
+                    localStorage.setItem('siddhi_appointments_auto_refresh', String(num));
+                  }}
+                  options={[
+                    { value: 0, label: 'Off' },
+                    { value: 1, label: '1 min' },
+                    { value: 5, label: '5 mins' },
+                    { value: 10, label: '10 mins' },
+                    { value: 15, label: '15 mins' },
+                    { value: 30, label: '30 mins' },
+                  ]}
+                  buttonClassName="bg-white border-slate-200 font-semibold"
+                />
+              </div>
 
               {autoRefreshMinutes > 0 && (
                 <>

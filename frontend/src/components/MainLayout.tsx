@@ -58,7 +58,7 @@ export const MainLayout: React.FC = () => {
           userRole={currentUser?.role}
         />
 
-        <main className="flex-1 p-6 max-w-7xl mx-auto w-full">
+        <main className="flex-1 p-3 sm:p-4 w-full">
           <Outlet context={contextValue} />
         </main>
       </div>

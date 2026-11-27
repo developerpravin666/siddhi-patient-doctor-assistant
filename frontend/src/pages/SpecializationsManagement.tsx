@@ -21,6 +21,7 @@ import {
 import { Specialization } from '../types';
 import { DataTable, ColumnDef } from '../components/DataTable';
 import { useConfirm } from '../context/ConfirmationContext';
+import { clearOrValidateField } from '../utils/validation';
 
 const specializationSchema = z.object({
   name: z.string().trim().min(2, 'Specialization name must be at least 2 characters').max(100, 'Name must not exceed 100 characters'),
@@ -356,8 +357,8 @@ export const SpecializationsManagement: React.FC<{ defaultMode?: 'server' | 'cli
 
       {/* Form Card (Adding or Editing) */}
       {editItem !== null && (
-        <div className="bg-white border border-indigo-200 rounded-2xl p-5 shadow-sm space-y-4 animate-fade-in">
-          <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+        <div className="ui-card w-full border-indigo-200 space-y-3 animate-fade-in">
+          <div className="flex items-center justify-between border-b border-slate-100 pb-2">
             <h3 className="font-bold text-sm text-slate-900 flex items-center gap-2">
               <Layers className="w-4 h-4 text-indigo-600" />
               <span>{editItem === 'new' ? 'New Medical Specialization' : `Edit Specialization: ${editItem.name}`}</span>
@@ -370,32 +371,50 @@ export const SpecializationsManagement: React.FC<{ defaultMode?: 'server' | 'cli
             </button>
           </div>
 
-          <form onSubmit={handleSubmit} className="space-y-4">
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div>
-                <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">
+          <form onSubmit={handleSubmit} className="space-y-3">
+            <div className="grid grid-cols-1 md:grid-cols-12 gap-3 items-start">
+              <div className="md:col-span-4">
+                <label className="ui-label">
                   Specialization Title <span className="text-rose-500">*</span>
                 </label>
                 <input
                   type="text"
-                  placeholder="e.g., Cardiologist, Pediatrician, Neurologist"
+                  placeholder="e.g., Cardiologist, Pediatrician"
                   value={formData.name}
-                  onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                  className={`w-full px-3.5 py-2 rounded-xl border ${
-                    formErrors.name ? 'border-rose-400 bg-rose-50' : 'border-slate-300'
-                  } text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500`}
+                  onChange={(e) => {
+                    const val = e.target.value;
+                    setFormData({ ...formData, name: val });
+                    setFormErrors((prev) => clearOrValidateField(specializationSchema, 'name', val, prev));
+                  }}
+                  className={`ui-input ${formErrors.name ? 'border-rose-400 bg-rose-50' : ''}`}
                 />
                 {formErrors.name && (
-                  <p className="text-xs text-rose-600 mt-1 font-medium">{formErrors.name}</p>
+                  <p className="text-[11px] text-rose-600 mt-1 font-medium">{formErrors.name}</p>
                 )}
               </div>
 
-              <div>
-                <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">
-                  Status
-                </label>
-                <div className="flex items-center gap-4 pt-2">
-                  <label className="flex items-center gap-2 cursor-pointer text-xs font-medium text-slate-700">
+              <div className="md:col-span-5">
+                <label className="ui-label">Description & Scope of Care</label>
+                <input
+                  type="text"
+                  placeholder="Brief description of treatments covered..."
+                  value={formData.description || ''}
+                  onChange={(e) => {
+                    const val = e.target.value;
+                    setFormData({ ...formData, description: val });
+                    setFormErrors((prev) => clearOrValidateField(specializationSchema, 'description', val || undefined, prev));
+                  }}
+                  className={`ui-input ${formErrors.description ? 'border-rose-400 bg-rose-50' : ''}`}
+                />
+                {formErrors.description && (
+                  <p className="text-[11px] text-rose-600 mt-1 font-medium">{formErrors.description}</p>
+                )}
+              </div>
+
+              <div className="md:col-span-3">
+                <label className="ui-label">Status</label>
+                <div className="flex items-center gap-4 h-8">
+                  <label className="flex items-center gap-1.5 cursor-pointer text-xs font-medium text-slate-700">
                     <input
                       type="radio"
                       name="is_active"
@@ -403,9 +422,9 @@ export const SpecializationsManagement: React.FC<{ defaultMode?: 'server' | 'cli
                       onChange={() => setFormData({ ...formData, is_active: true })}
                       className="text-indigo-600 focus:ring-indigo-500"
                     />
-                    Active (Available for Doctors)
+                    Active
                   </label>
-                  <label className="flex items-center gap-2 cursor-pointer text-xs font-medium text-slate-700">
+                  <label className="flex items-center gap-1.5 cursor-pointer text-xs font-medium text-slate-700">
                     <input
                       type="radio"
                       name="is_active"
@@ -419,25 +438,7 @@ export const SpecializationsManagement: React.FC<{ defaultMode?: 'server' | 'cli
               </div>
             </div>
 
-            <div>
-              <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">
-                Description & Scope of Care
-              </label>
-              <textarea
-                rows={2}
-                placeholder="Brief description of treatments and patient care covered by this specialty..."
-                value={formData.description || ''}
-                onChange={(e) => setFormData({ ...formData, description: e.target.value })}
-                className={`w-full px-3.5 py-2 rounded-xl border ${
-                  formErrors.description ? 'border-rose-400 bg-rose-50' : 'border-slate-300'
-                } text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500`}
-              />
-              {formErrors.description && (
-                <p className="text-xs text-rose-600 mt-1 font-medium">{formErrors.description}</p>
-              )}
-            </div>
-
-            <div className="flex items-center justify-end gap-3 pt-2">
+            <div className="flex items-center justify-end gap-2 pt-1 border-t border-slate-100">
               <button
                 type="button"
                 onClick={closeForm}

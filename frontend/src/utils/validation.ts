@@ -139,3 +139,31 @@ export const validateForm = <T>(
   }
   return { isValid: false, errors };
 };
+
+/**
+ * Re-validates a single field when `currentErrors[fieldName]` is currently shown.
+ * Clears the error immediately once the field fulfills its Zod validation requirement,
+ * or updates the message if it still fails.
+ */
+export const clearOrValidateField = <T extends z.ZodRawShape>(
+  schema: z.ZodObject<T>,
+  fieldName: keyof T & string,
+  value: unknown,
+  currentErrors: Record<string, string>
+): Record<string, string> => {
+  if (!currentErrors[fieldName]) return currentErrors;
+  const fieldSchema = schema.shape[fieldName] as unknown as z.ZodTypeAny | undefined;
+  if (!fieldSchema) {
+    const next = { ...currentErrors };
+    delete next[fieldName];
+    return next;
+  }
+  const result = fieldSchema.safeParse(value);
+  const next = { ...currentErrors };
+  if (result.success) {
+    delete next[fieldName];
+  } else {
+    next[fieldName] = result.error.issues[0]?.message || next[fieldName];
+  }
+  return next;
+};

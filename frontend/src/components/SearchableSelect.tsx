@@ -153,11 +153,11 @@ export const SearchableSelect: React.FC<SearchableSelectProps> = ({
     onChange('');
   };
 
-  // Size variations
+  // Size variations (compact, aligned with h-8 inputs)
   const sizeClasses = {
-    sm: 'px-2.5 py-1.5 text-xs rounded-lg',
-    md: 'px-3.5 py-2 text-xs sm:text-sm rounded-xl',
-    lg: 'px-4 py-2.5 text-sm rounded-xl',
+    sm: 'px-2 py-0.5 text-xs rounded-lg min-h-[28px]',
+    md: 'px-2.5 py-1 text-xs rounded-lg min-h-[32px]',
+    lg: 'px-3 py-1.5 text-xs sm:text-sm rounded-lg min-h-[36px]',
   };
 
   return (
@@ -273,7 +273,7 @@ export const SearchableSelect: React.FC<SearchableSelectProps> = ({
                     onClick={() => {
                       if (!opt.disabled) handleSelect(opt);
                     }}
-                    className={`px-3 py-2 flex items-center justify-between gap-2 transition cursor-pointer ${
+                    className={`px-3 py-1.5 flex items-center justify-between gap-2 transition cursor-pointer ${
                       opt.disabled
                         ? 'opacity-40 cursor-not-allowed bg-slate-50 text-slate-400'
                         : isSelected

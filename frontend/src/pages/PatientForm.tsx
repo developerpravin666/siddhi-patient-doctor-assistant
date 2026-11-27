@@ -14,13 +14,14 @@ import { z } from 'zod';
 import { getPatient, createPatient, updatePatient } from '../api/client';
 import { Patient } from '../types';
 import { SearchableSelect } from '../components/SearchableSelect';
+import { clearOrValidateField } from '../utils/validation';
 
 const patientSchema = z.object({
   full_name: z.string().trim().min(2, 'Full Name must be at least 2 characters').max(100, 'Full Name cannot exceed 100 characters'),
   mobile_number: z.string().trim()
     .min(10, 'Mobile number must be at least 10 digits')
     .max(15, 'Mobile number cannot exceed 15 digits')
-    .regex(/^[0-9+\s-]+$/, 'Mobile number can only contain digits, spaces, and hyphens'),
+    .regex(/^[0-9]+$/, 'Mobile number can only contain digits'),
   email: z.string().trim().email('Please enter a valid email address').optional().or(z.literal('')),
   gender: z.enum(['MALE', 'FEMALE', 'OTHER', '']).optional(),
   age: z.number().int().min(1, 'Age must be between 1 and 120').max(120, 'Age must be between 1 and 120').optional().nullable(),
@@ -144,28 +145,28 @@ export const PatientForm: React.FC = () => {
   }
 
   return (
-    <div className="max-w-4xl mx-auto space-y-6">
+    <div className="w-full space-y-3">
       {/* Top Header */}
-      <div className="flex items-center justify-between gap-4 pb-4 border-b border-slate-200">
-        <div className="flex items-center gap-3">
+      <div className="flex items-center justify-between gap-3 pb-2.5 border-b border-slate-200">
+        <div className="flex items-center gap-2.5">
           <Link
             to="/patients"
-            className="p-2 text-slate-500 hover:text-slate-800 hover:bg-slate-100 rounded-xl transition"
+            className="p-1.5 text-slate-500 hover:text-slate-800 hover:bg-slate-100 rounded-lg transition"
             title="Back to Patients Directory"
           >
-            <ArrowLeft className="w-5 h-5" />
+            <ArrowLeft className="w-4 h-4" />
           </Link>
           <div>
             <div className="flex items-center gap-2">
-              <span className="p-2 bg-indigo-50 text-indigo-600 rounded-xl">
-                <Users className="w-5 h-5" />
+              <span className="p-1.5 bg-indigo-50 text-indigo-600 rounded-lg">
+                <Users className="w-4 h-4" />
               </span>
-              <h1 className="text-2xl font-bold text-slate-900">
+              <h1 className="text-lg font-bold text-slate-900">
                 {isEditMode ? 'Edit Patient Profile' : 'Add New Patient'}
               </h1>
             </div>
-            <p className="text-xs text-slate-500 mt-0.5">
-              Maintain accurate patient demographics, contact details, and active status.
+            <p className="text-[11px] text-slate-500 mt-0.5">
+              Maintain patient demographics, contact details, and active status.
             </p>
           </div>
         </div>
@@ -173,7 +174,7 @@ export const PatientForm: React.FC = () => {
         <button
           type="button"
           onClick={() => navigate('/patients')}
-          className="px-4 py-2 text-sm text-slate-600 hover:text-slate-800 border border-slate-200 rounded-xl hover:bg-slate-50 transition"
+          className="ui-btn-secondary"
         >
           Cancel
         </button>
@@ -181,88 +182,95 @@ export const PatientForm: React.FC = () => {
 
       {/* Error Alert */}
       {errorMessage && (
-        <div className="p-4 bg-rose-50 border border-rose-200 text-rose-800 rounded-xl text-sm flex items-center gap-2.5">
-          <AlertCircle className="w-5 h-5 text-rose-600 flex-shrink-0" />
+        <div className="p-3 bg-rose-50 border border-rose-200 text-rose-800 rounded-lg text-xs flex items-center gap-2">
+          <AlertCircle className="w-4 h-4 text-rose-600 flex-shrink-0" />
           <span>{errorMessage}</span>
         </div>
       )}
 
       {/* Form */}
-      <form onSubmit={handleSubmit} className="space-y-6">
-        <div className="bg-white border border-slate-200 rounded-2xl p-6 shadow-sm space-y-5">
-          <h2 className="text-base font-bold text-slate-800 flex items-center gap-2 pb-3 border-b border-slate-100">
+      <form onSubmit={handleSubmit} className="space-y-3.5">
+        <div className="ui-card space-y-3.5">
+          <h2 className="text-sm font-bold text-slate-800 flex items-center gap-2 pb-2 border-b border-slate-100">
             <User className="w-4 h-4 text-indigo-600" />
             Personal & Contact Information
           </h2>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
             <div>
-              <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5">
+              <label className="ui-label">
                 Full Name <span className="text-rose-500">*</span>
               </label>
               <div className="relative">
-                <User className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
+                <User className="w-3.5 h-3.5 text-slate-400 absolute left-2.5 top-1/2 -translate-y-1/2" />
                 <input
                   type="text"
                   placeholder="e.g. Test Patient"
                   value={formData.full_name}
-                  onChange={(e) => setFormData({ ...formData, full_name: e.target.value })}
-                  className={`w-full pl-10 pr-4 py-2.5 rounded-xl border ${formErrors.full_name ? 'border-rose-400 bg-rose-50' : 'border-slate-300'
-                    } text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500`}
+                  onChange={(e) => {
+                    const val = e.target.value;
+                    setFormData({ ...formData, full_name: val });
+                    setFormErrors((prev) => clearOrValidateField(patientSchema, 'full_name', val, prev));
+                  }}
+                  className={`ui-input pl-8 ${formErrors.full_name ? 'border-rose-400 bg-rose-50' : ''}`}
                 />
               </div>
               {formErrors.full_name && (
-                <p className="text-xs text-rose-600 mt-1 font-medium">{formErrors.full_name}</p>
+                <p className="text-[11px] text-rose-600 mt-1 font-medium">{formErrors.full_name}</p>
               )}
             </div>
 
             <div>
-              <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5">
+              <label className="ui-label">
                 Mobile Number <span className="text-rose-500">*</span>
               </label>
               <div className="relative">
-                <Phone className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
+                <Phone className="w-3.5 h-3.5 text-slate-400 absolute left-2.5 top-1/2 -translate-y-1/2" />
                 <input
                   type="text"
                   placeholder="e.g. 9876543210"
                   value={formData.mobile_number}
-                  onChange={(e) => setFormData({ ...formData, mobile_number: e.target.value })}
-                  className={`w-full pl-10 pr-4 py-2.5 rounded-xl border ${formErrors.mobile_number ? 'border-rose-400 bg-rose-50' : 'border-slate-300'
-                    } text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500`}
+                  onChange={(e) => {
+                    const val = e.target.value;
+                    setFormData({ ...formData, mobile_number: val });
+                    setFormErrors((prev) => clearOrValidateField(patientSchema, 'mobile_number', val, prev));
+                  }}
+                  className={`ui-input pl-8 ${formErrors.mobile_number ? 'border-rose-400 bg-rose-50' : ''}`}
                 />
               </div>
               {formErrors.mobile_number && (
-                <p className="text-xs text-rose-600 mt-1 font-medium">{formErrors.mobile_number}</p>
+                <p className="text-[11px] text-rose-600 mt-1 font-medium">{formErrors.mobile_number}</p>
               )}
             </div>
 
             <div>
-              <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5">
-                Email Address <span className="text-slate-400 text-xs font-normal">(Optional)</span>
+              <label className="ui-label">
+                Email Address <span className="text-slate-400 font-normal">(Optional)</span>
               </label>
               <div className="relative">
-                <Mail className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
+                <Mail className="w-3.5 h-3.5 text-slate-400 absolute left-2.5 top-1/2 -translate-y-1/2" />
                 <input
                   type="email"
                   placeholder="e.g. test@gmail.com"
                   value={formData.email}
-                  onChange={(e) => setFormData({ ...formData, email: e.target.value })}
-                  className={`w-full pl-10 pr-4 py-2.5 rounded-xl border ${formErrors.email ? 'border-rose-400 bg-rose-50' : 'border-slate-300'
-                    } text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500`}
+                  onChange={(e) => {
+                    const val = e.target.value;
+                    setFormData({ ...formData, email: val });
+                    setFormErrors((prev) => clearOrValidateField(patientSchema, 'email', val || undefined, prev));
+                  }}
+                  className={`ui-input pl-8 ${formErrors.email ? 'border-rose-400 bg-rose-50' : ''}`}
                 />
               </div>
               {formErrors.email && (
-                <p className="text-xs text-rose-600 mt-1 font-medium">{formErrors.email}</p>
+                <p className="text-[11px] text-rose-600 mt-1 font-medium">{formErrors.email}</p>
               )}
             </div>
 
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-2 gap-2.5">
               <div>
-                <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5">
-                  Gender
-                </label>
+                <label className="ui-label">Gender</label>
                 <SearchableSelect
-                  placeholder="Select Gender"
+                  placeholder="Select"
                   value={formData.gender || ''}
                   onChange={(val) => setFormData({ ...formData, gender: (val || '') as any })}
                   searchable={false}
@@ -276,9 +284,7 @@ export const PatientForm: React.FC = () => {
               </div>
 
               <div>
-                <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5">
-                  Age
-                </label>
+                <label className="ui-label">Age</label>
                 <input
                   type="number"
                   min={1}
@@ -286,37 +292,34 @@ export const PatientForm: React.FC = () => {
                   placeholder="Years"
                   value={formData.age}
                   onChange={(e) => setFormData({ ...formData, age: e.target.value })}
-                  className={`w-full px-3.5 py-2.5 rounded-xl border ${formErrors.age ? 'border-rose-400 bg-rose-50' : 'border-slate-300'
-                    } text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500`}
+                  className={`ui-input ${formErrors.age ? 'border-rose-400 bg-rose-50' : ''}`}
                 />
                 {formErrors.age && (
-                  <p className="text-xs text-rose-600 mt-1 font-medium">{formErrors.age}</p>
+                  <p className="text-[11px] text-rose-600 mt-1 font-medium">{formErrors.age}</p>
                 )}
               </div>
             </div>
 
             <div className="md:col-span-2">
-              <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5">
-                Residential Address <span className="text-slate-400 text-xs font-normal">(Optional)</span>
+              <label className="ui-label">
+                Residential Address <span className="text-slate-400 font-normal">(Optional)</span>
               </label>
               <div className="relative">
-                <MapPin className="w-4 h-4 text-slate-400 absolute left-3.5 top-3" />
-                <textarea
-                  rows={2}
+                <MapPin className="w-3.5 h-3.5 text-slate-400 absolute left-2.5 top-1/2 -translate-y-1/2" />
+                <input
+                  type="text"
                   placeholder="Street, locality, city, pincode..."
                   value={formData.address}
                   onChange={(e) => setFormData({ ...formData, address: e.target.value })}
-                  className="w-full pl-10 pr-4 py-2.5 rounded-xl border border-slate-300 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                  className="ui-input pl-8"
                 />
               </div>
             </div>
 
-            <div className="md:col-span-2 pt-2 border-t border-slate-100">
-              <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5">
-                Patient Status
-              </label>
-              <div className="flex items-center gap-6">
-                <label className="flex items-center gap-2 cursor-pointer text-sm font-medium text-slate-700">
+            <div className="md:col-span-2 pt-2 border-t border-slate-100 flex items-center justify-between flex-wrap gap-2">
+              <label className="ui-label mb-0">Patient Status</label>
+              <div className="flex items-center gap-5">
+                <label className="flex items-center gap-1.5 cursor-pointer text-xs font-medium text-slate-700">
                   <input
                     type="radio"
                     name="status"
@@ -326,7 +329,7 @@ export const PatientForm: React.FC = () => {
                   />
                   Active Patient
                 </label>
-                <label className="flex items-center gap-2 cursor-pointer text-sm font-medium text-slate-700">
+                <label className="flex items-center gap-1.5 cursor-pointer text-xs font-medium text-slate-700">
                   <input
                     type="radio"
                     name="status"
@@ -342,20 +345,20 @@ export const PatientForm: React.FC = () => {
         </div>
 
         {/* Form Actions */}
-        <div className="flex items-center justify-end gap-3 pt-2">
+        <div className="flex items-center justify-end gap-2.5">
           <button
             type="button"
             onClick={() => navigate('/patients')}
-            className="px-5 py-2.5 border border-slate-300 text-slate-700 rounded-xl text-sm font-semibold hover:bg-slate-50 transition"
+            className="ui-btn-secondary"
           >
             Cancel
           </button>
           <button
             type="submit"
             disabled={saving}
-            className="inline-flex items-center gap-2 px-6 py-2.5 bg-indigo-600 text-white rounded-xl text-sm font-semibold hover:bg-indigo-700 transition shadow-sm hover:shadow disabled:opacity-50"
+            className="ui-btn-primary"
           >
-            <Save className="w-4 h-4" />
+            <Save className="w-3.5 h-3.5" />
             {saving ? 'Saving...' : isEditMode ? 'Update Patient' : 'Register Patient'}
           </button>
         </div>

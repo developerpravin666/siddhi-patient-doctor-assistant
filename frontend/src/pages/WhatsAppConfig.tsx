@@ -20,7 +20,7 @@ import {
 import { useOutletContext } from 'react-router-dom';
 import { WhatsAppConfig, Doctor, AdminUser, UserRole, AppContextType } from '../types';
 import { getWhatsAppConfig, updateWhatsAppConfig, testWhatsAppConnection, subscribeWabaWebhook, getDoctors } from '../api/client';
-import { whatsappConfigSchema, validateForm } from '../utils/validation';
+import { whatsappConfigSchema, validateForm, clearOrValidateField } from '../utils/validation';
 import { SearchableSelect } from '../components/SearchableSelect';
 import { getWebhookCallbackUrl } from '../config';
 
@@ -245,11 +245,11 @@ export const WhatsAppConfigPage: React.FC<WhatsAppConfigProps> = (props) => {
         <div className="lg:col-span-2 space-y-6">
           <form onSubmit={handleSave} className="space-y-6">
             {/* Meta API Credentials Card */}
-            <div className="bg-white rounded-2xl p-6 border border-slate-200 shadow-sm space-y-4">
+            <div className="ui-card space-y-4">
               <div className="flex items-center justify-between border-b border-slate-100 pb-3">
                 <div className="flex items-center gap-2">
-                  <div className="w-8 h-8 rounded-lg bg-emerald-50 text-emerald-600 flex items-center justify-center font-bold">
-                    <Key className="w-4 h-4" />
+                  <div className="w-7 h-7 rounded-lg bg-emerald-50 text-emerald-600 flex items-center justify-center font-bold">
+                    <Key className="w-3.5 h-3.5" />
                   </div>
                   <div>
                     <h3 className="font-bold text-slate-900 text-sm">Meta Cloud API Credentials</h3>
@@ -261,16 +261,20 @@ export const WhatsAppConfigPage: React.FC<WhatsAppConfigProps> = (props) => {
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-xs">
                 {/* Phone Number ID */}
                 <div>
-                  <label className="block font-bold text-slate-700 mb-1">WhatsApp Phone Number ID *</label>
+                  <label className="ui-label">WhatsApp Phone Number ID *</label>
                   <input
                     type="text"
                     value={phoneNumberId}
-                    onChange={(e) => setPhoneNumberId(e.target.value)}
+                    onChange={(e) => {
+                      const val = e.target.value;
+                      setPhoneNumberId(val);
+                      setFormErrors((prev) => clearOrValidateField(whatsappConfigSchema, 'whatsapp_phone_number_id', val.trim(), prev));
+                    }}
                     placeholder="e.g. 524189020786543"
                     disabled={!canEdit}
-                    className={`w-full px-3 py-2 rounded-xl border font-mono text-xs focus:outline-none focus:ring-2 ${formErrors.whatsapp_phone_number_id
+                    className={`ui-input font-mono ${formErrors.whatsapp_phone_number_id
                         ? 'border-rose-400 focus:ring-rose-500/20'
-                        : 'border-slate-200 focus:ring-brand-500/20'
+                        : ''
                       }`}
                   />
                   {formErrors.whatsapp_phone_number_id && (
@@ -280,31 +284,35 @@ export const WhatsAppConfigPage: React.FC<WhatsAppConfigProps> = (props) => {
 
                 {/* WABA ID */}
                 <div>
-                  <label className="block font-bold text-slate-700 mb-1">WhatsApp Business Account ID (WABA)</label>
+                  <label className="ui-label">WhatsApp Business Account ID (WABA)</label>
                   <input
                     type="text"
                     value={businessAccountId}
                     onChange={(e) => setBusinessAccountId(e.target.value)}
                     placeholder="e.g. 104589201948203"
                     disabled={!canEdit}
-                    className="w-full px-3 py-2 rounded-xl border border-slate-200 font-mono text-xs focus:outline-none focus:ring-2 focus:ring-brand-500/20"
+                    className="ui-input font-mono"
                   />
                 </div>
               </div>
 
               {/* Permanent Access Token */}
               <div className="text-xs">
-                <label className="block font-bold text-slate-700 mb-1">Permanent System User Access Token *</label>
+                <label className="ui-label">Permanent System User Access Token *</label>
                 <div className="relative">
                   <input
                     type={showAccessToken ? 'text' : 'password'}
                     value={accessToken}
-                    onChange={(e) => setAccessToken(e.target.value)}
+                    onChange={(e) => {
+                      const val = e.target.value;
+                      setAccessToken(val);
+                      setFormErrors((prev) => clearOrValidateField(whatsappConfigSchema, 'whatsapp_access_token', val.trim(), prev));
+                    }}
                     placeholder="EAAG... (Meta System User Token with whatsapp_business_messaging)"
                     disabled={!canEdit}
-                    className={`w-full px-3 py-2 pr-10 rounded-xl border font-mono text-xs focus:outline-none focus:ring-2 ${formErrors.whatsapp_access_token
+                    className={`ui-input pr-10 font-mono ${formErrors.whatsapp_access_token
                         ? 'border-rose-400 focus:ring-rose-500/20'
-                        : 'border-slate-200 focus:ring-brand-500/20'
+                        : ''
                       }`}
                   />
                   <button
@@ -314,7 +322,7 @@ export const WhatsAppConfigPage: React.FC<WhatsAppConfigProps> = (props) => {
                     title={showAccessToken ? 'Hide access token' : 'Show access token'}
                     className="absolute inset-y-0 right-0 px-3 flex items-center text-slate-400 hover:text-slate-600 transition"
                   >
-                    {showAccessToken ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                    {showAccessToken ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
                   </button>
                 </div>
                 {formErrors.whatsapp_access_token && (
@@ -324,14 +332,18 @@ export const WhatsAppConfigPage: React.FC<WhatsAppConfigProps> = (props) => {
 
               {/* Webhook Verify Token */}
               <div className="text-xs">
-                <label className="block font-bold text-slate-700 mb-1">Webhook Verify Token *</label>
+                <label className="ui-label">Webhook Verify Token *</label>
                 <input
                   type="text"
                   value={verifyToken}
-                  onChange={(e) => setVerifyToken(e.target.value)}
+                  onChange={(e) => {
+                    const val = e.target.value;
+                    setVerifyToken(val);
+                    setFormErrors((prev) => clearOrValidateField(whatsappConfigSchema, 'whatsapp_verify_token', val.trim(), prev));
+                  }}
                   placeholder="siddhi_patient_assistant_verify_token_secure_2026"
                   disabled={!canEdit}
-                  className="w-full px-3 py-2 rounded-xl border border-slate-200 font-mono text-xs focus:outline-none focus:ring-2 focus:ring-brand-500/20"
+                  className="ui-input font-mono"
                 />
                 <p className="text-[10px] text-slate-400 mt-1">
                   Enter this same token in Meta App Dashboard &gt; WhatsApp &gt; Configuration &gt; Webhook
