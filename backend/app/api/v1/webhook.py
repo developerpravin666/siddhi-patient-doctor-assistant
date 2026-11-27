@@ -1,8 +1,9 @@
 import logging
 from typing import Dict, Any, Optional
-from fastapi import APIRouter, Query, Response, status, Request, HTTPException, BackgroundTasks
+from fastapi import APIRouter, Query, Response, status, Request, HTTPException, BackgroundTasks, Depends
 from app.core.config import settings
 from app.core import security
+from app.core.rate_limiter import webhook_rate_limiter
 from app.core.database import AsyncSessionLocal, is_postgres, sanitize_schema_name
 from app.models.domain import Clinic, Tenant
 from sqlalchemy import select, text
@@ -36,7 +37,7 @@ async def verify_webhook(
             try:
                 async with AsyncSessionLocal() as session:
                     if is_postgres():
-                        stmt = select(Tenant.schema_name).where(Tenant.is_active == True)
+                        stmt = select(Tenant.schema_name).where(Tenant.status == "ACTIVE")
                         res = await session.execute(stmt)
                         schemas = [r[0] for r in res.fetchall() if r[0]]
                         for sch in schemas:
@@ -135,7 +136,7 @@ async def resolve_webhook_tenant_schema(recipient_phone_id: Optional[str]) -> st
         return "public"
 
 
-@router.post("/webhook")
+@router.post("/webhook", dependencies=[Depends(webhook_rate_limiter)])
 async def receive_whatsapp_event(request: Request, background_tasks: BackgroundTasks):
     """
     Meta WhatsApp Cloud API Inbound Message Receiver.

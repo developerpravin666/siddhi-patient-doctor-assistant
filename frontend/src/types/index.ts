@@ -49,6 +49,7 @@ export interface Appointment {
   time_slot: string;
   appointment_datetime: string;
   status: 'CONFIRMED' | 'COMPLETED' | 'CANCELLED' | 'RESCHEDULED';
+  notes?: string | null;
   reminder_sent: boolean;
   reminder_sent_at?: string;
   created_at: string;
@@ -60,6 +61,7 @@ export interface Doctor {
   name: string;
   specialty: string;
   available_days: string;
+  leave_dates?: string | null;
   morning_slots?: string | null;
   evening_slots?: string | null;
   slot_duration_minutes: number;

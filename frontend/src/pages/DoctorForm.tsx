@@ -142,6 +142,8 @@ export const DoctorForm: React.FC = () => {
   });
 
   const [clinicId, setClinicId] = useState<string>('');
+  const [leaveDatesList, setLeaveDatesList] = useState<string[]>([]);
+  const [leaveDateInput, setLeaveDateInput] = useState<string>('');
 
   useEffect(() => {
     const initData = async () => {
@@ -181,6 +183,11 @@ export const DoctorForm: React.FC = () => {
             evening_slots: doc.evening_slots || '',
             is_active: doc.is_active,
           });
+          setLeaveDatesList(
+            doc.leave_dates
+              ? doc.leave_dates.split(',').map((d) => d.trim()).filter(Boolean)
+              : []
+          );
           setClinicId(doc.clinic_id);
         }
       } catch (err: any) {
@@ -289,6 +296,7 @@ export const DoctorForm: React.FC = () => {
         specialties: formData.specialties,
         specialty: formData.specialties.join(', '),
         available_days: formData.available_days,
+        leave_dates: leaveDatesList.join(', '),
         slot_duration_minutes: formData.slot_duration_minutes,
         morning_slots: formData.morning_slots,
         evening_slots: formData.evening_slots,
@@ -599,6 +607,50 @@ export const DoctorForm: React.FC = () => {
               {formErrors.available_days && (
                 <p className="text-[11px] text-rose-600 mt-1 font-medium">{formErrors.available_days}</p>
               )}
+
+              {/* Doctor Leave / Holiday Dates */}
+              <div className="mt-3 pt-2.5 border-t border-slate-100">
+                <label className="ui-label">Leave / Holiday Dates (Optional)</label>
+                <div className="flex items-center gap-2">
+                  <input
+                    type="date"
+                    value={leaveDateInput}
+                    onChange={(e) => setLeaveDateInput(e.target.value)}
+                    className="ui-input max-w-[170px]"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (leaveDateInput && !leaveDatesList.includes(leaveDateInput)) {
+                        setLeaveDatesList((prev) => [...prev, leaveDateInput].sort());
+                        setLeaveDateInput('');
+                      }
+                    }}
+                    className="ui-btn-secondary shrink-0"
+                  >
+                    <Plus className="w-3.5 h-3.5" /> Add Leave Date
+                  </button>
+                </div>
+                {leaveDatesList.length > 0 && (
+                  <div className="flex items-center gap-1.5 flex-wrap mt-2">
+                    {leaveDatesList.map((dt) => (
+                      <span
+                        key={dt}
+                        className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-semibold bg-rose-50 text-rose-700 border border-rose-200"
+                      >
+                        {dt}
+                        <button
+                          type="button"
+                          onClick={() => setLeaveDatesList((prev) => prev.filter((x) => x !== dt))}
+                          className="hover:text-rose-900"
+                        >
+                          <X className="w-3 h-3" />
+                        </button>
+                      </span>
+                    ))}
+                  </div>
+                )}
+              </div>
             </div>
           </div>
 

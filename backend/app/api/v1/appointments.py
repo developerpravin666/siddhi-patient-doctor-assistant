@@ -216,6 +216,7 @@ async def create_manual_appointment(
         "time_slot": payload.time_slot,
         "doctor_id": payload.doctor_id,
         "clinic_id": payload.clinic_id,
+        "notes": payload.notes,
         "status": "CONFIRMED"
     }, tenant_schema=safe_schema)
 
@@ -306,6 +307,8 @@ async def update_appointment(
         appt.mobile_number = payload.mobile_number.strip()
     if payload.status is not None:
         appt.status = payload.status
+    if payload.notes is not None:
+        appt.notes = payload.notes.strip() or None
 
     if payload.doctor_id is not None:
         appt.doctor_id = payload.doctor_id

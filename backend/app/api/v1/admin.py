@@ -959,6 +959,7 @@ async def create_doctor(
         name=payload.name,
         specialty=specialty_val,
         available_days=payload.available_days or "Mon,Tue,Wed,Thu,Fri,Sat",
+        leave_dates=payload.leave_dates.strip() if payload.leave_dates else None,
         morning_slots=payload.morning_slots.strip() if payload.morning_slots and payload.morning_slots.strip() else "09:00 AM,09:30 AM,10:00 AM,10:30 AM,11:00 AM,11:30 AM,12:00 PM,12:30 PM",
         evening_slots=payload.evening_slots.strip() if payload.evening_slots and payload.evening_slots.strip() else "04:00 PM,04:30 PM,05:00 PM,05:30 PM,06:00 PM,06:30 PM,07:00 PM",
         slot_duration_minutes=payload.slot_duration_minutes or 15,
@@ -997,6 +998,8 @@ async def update_doctor(
         doctor.specialty = payload.specialty
     if payload.available_days is not None:
         doctor.available_days = payload.available_days
+    if payload.leave_dates is not None:
+        doctor.leave_dates = payload.leave_dates.strip() or None
     if payload.morning_slots is not None:
         doctor.morning_slots = payload.morning_slots
     if payload.evening_slots is not None:

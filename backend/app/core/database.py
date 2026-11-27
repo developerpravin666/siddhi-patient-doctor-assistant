@@ -204,6 +204,8 @@ async def provision_tenant_schema(schema_name: str, eng=None) -> str:
             f'ALTER TABLE "{safe_schema}".patients ADD COLUMN IF NOT EXISTS status VARCHAR(20) DEFAULT \'ACTIVE\';',
             f'ALTER TABLE "{safe_schema}".patients ADD COLUMN IF NOT EXISTS is_active BOOLEAN DEFAULT TRUE;',
             f'ALTER TABLE "{safe_schema}".appointments ADD COLUMN IF NOT EXISTS tenant_id VARCHAR(36);',
+            f'ALTER TABLE "{safe_schema}".appointments ADD COLUMN IF NOT EXISTS notes TEXT;',
+            f'ALTER TABLE "{safe_schema}".doctors ADD COLUMN IF NOT EXISTS leave_dates TEXT;',
         ]
         for m_stmt in schema_migrations:
             try:

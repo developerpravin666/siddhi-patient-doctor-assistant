@@ -158,6 +158,7 @@ class DatabaseService:
                         "name": d.name,
                         "specialty": d.specialty or "General Physician",
                         "available_days": d.available_days or "Monday - Saturday",
+                        "leave_dates": getattr(d, "leave_dates", None),
                         "morning_slots": d.morning_slots,
                         "evening_slots": d.evening_slots,
                         "slot_duration_minutes": d.slot_duration_minutes or 30
@@ -283,6 +284,7 @@ class DatabaseService:
                     time_slot=data["time_slot"],
                     appointment_datetime=utc_dt,
                     status="CONFIRMED",
+                    notes=data.get("notes").strip() if isinstance(data.get("notes"), str) and data.get("notes").strip() else None,
                     reminder_sent=False
                 )
                 session.add(new_appointment)
@@ -530,35 +532,76 @@ class DatabaseService:
 
     @staticmethod
     async def get_unreminded_appointments_between(window_start: datetime, window_end: datetime) -> List[Dict[str, Any]]:
+        """
+        Queries all active tenant schemas for confirmed, unreminded appointments
+        falling within [window_start, window_end], along with each clinic's WhatsApp credentials.
+        """
+        results: List[Dict[str, Any]] = []
+        schemas_to_check: List[str] = ["public"]
+
         async with AsyncSessionLocal() as session:
-            stmt = select(Appointment).where(
-                and_(
-                    Appointment.status == "CONFIRMED",
-                    Appointment.reminder_sent == False,
-                    Appointment.appointment_datetime >= window_start,
-                    Appointment.appointment_datetime <= window_end
-                )
-            )
-            result = await session.execute(stmt)
-            appointments = result.scalars().all()
-            return [
-                {
-                    "id": a.id,
-                    "patient_name": a.patient_name,
-                    "mobile_number": a.mobile_number,
-                    "doctor_name": a.doctor_name,
-                    "clinic_name": a.clinic_name,
-                    "clinic_address": a.clinic_address,
-                    "date": a.appointment_date,
-                    "time_slot": a.time_slot,
-                    "appointment_datetime": a.appointment_datetime
-                }
-                for a in appointments
-            ]
+            if is_postgres():
+                try:
+                    await session.execute(text('SET search_path TO public;'))
+                    t_res = await session.execute(
+                        select(Tenant.schema_name).where(Tenant.status == "ACTIVE")
+                    )
+                    active_schemas = [sanitize_schema_name(r[0]) for r in t_res.fetchall() if r[0]]
+                    if active_schemas:
+                        schemas_to_check = active_schemas
+                except Exception as e:
+                    logger.warning(f"Error listing tenant schemas for reminders: {e}")
+
+            for sch in schemas_to_check:
+                try:
+                    if is_postgres():
+                        await session.execute(text(f'SET search_path TO "{sch}", public;'))
+
+                    stmt = select(Appointment).where(
+                        and_(
+                            Appointment.status == "CONFIRMED",
+                            Appointment.reminder_sent == False,
+                            Appointment.appointment_datetime >= window_start,
+                            Appointment.appointment_datetime <= window_end
+                        )
+                    )
+                    res = await session.execute(stmt)
+                    appointments = res.scalars().all()
+                    if not appointments:
+                        continue
+
+                    clinic_res = await session.execute(select(Clinic).limit(1))
+                    clinic = clinic_res.scalar_one_or_none()
+                    pid = clinic.whatsapp_phone_number_id if clinic else None
+                    tok = clinic.whatsapp_access_token if clinic else None
+
+                    for a in appointments:
+                        results.append({
+                            "id": a.id,
+                            "tenant_schema": sch,
+                            "patient_name": a.patient_name,
+                            "mobile_number": a.mobile_number,
+                            "doctor_name": a.doctor_name,
+                            "clinic_name": a.clinic_name,
+                            "clinic_address": a.clinic_address,
+                            "date": a.appointment_date,
+                            "time_slot": a.time_slot,
+                            "appointment_datetime": a.appointment_datetime,
+                            "phone_number_id": pid,
+                            "access_token": tok,
+                        })
+                except Exception as e:
+                    logger.warning(f"Error checking reminders in schema '{sch}': {e}")
+                    continue
+
+        return results
 
     @staticmethod
-    async def mark_reminder_sent(appointment_id: str):
+    async def mark_reminder_sent(appointment_id: str, tenant_schema: str = "public"):
+        safe_schema = await DatabaseService.resolve_schema(tenant_schema)
         async with AsyncSessionLocal() as session:
+            if is_postgres():
+                await session.execute(text(f'SET search_path TO "{safe_schema}", public;'))
             stmt = select(Appointment).where(Appointment.id == appointment_id)
             res = await session.execute(stmt)
             appt = res.scalar_one_or_none()

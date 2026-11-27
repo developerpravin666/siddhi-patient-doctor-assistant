@@ -139,6 +139,7 @@ class AppointmentOut(BaseModel):
     time_slot: str
     appointment_datetime: datetime
     status: str
+    notes: Optional[str] = None
     reminder_sent: bool
     reminder_sent_at: Optional[datetime] = None
     created_at: datetime
@@ -187,6 +188,7 @@ class DoctorCreate(BaseModel):
     specialty: Optional[str] = None
     specialties: Optional[List[str]] = None
     available_days: str = "Mon,Tue,Wed,Thu,Fri,Sat"
+    leave_dates: Optional[str] = None
     morning_slots: Optional[str] = None
     evening_slots: Optional[str] = None
     slot_duration_minutes: int = 15
@@ -198,6 +200,7 @@ class DoctorUpdate(BaseModel):
     specialty: Optional[str] = None
     specialties: Optional[List[str]] = None
     available_days: Optional[str] = None
+    leave_dates: Optional[str] = None
     morning_slots: Optional[str] = None
     evening_slots: Optional[str] = None
     slot_duration_minutes: Optional[int] = None
@@ -214,6 +217,7 @@ class DoctorOut(BaseModel):
     name: str
     specialty: str
     available_days: str
+    leave_dates: Optional[str] = None
     morning_slots: Optional[str] = None
     evening_slots: Optional[str] = None
     slot_duration_minutes: int

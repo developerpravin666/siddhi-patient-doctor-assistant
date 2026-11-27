@@ -15,6 +15,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.database import get_db, sanitize_schema_name
 from app.core.tenant_context import get_tenant_override
 from app.core.security import verify_password, create_access_token, decode_access_token, get_password_hash
+from app.core.rate_limiter import login_rate_limiter
 from app.models.domain import AdminUser, Tenant, get_default_permissions
 from app.models.schemas import LoginRequest, TokenResponse, AdminUserOut, UserProfileUpdate
 
@@ -184,7 +185,7 @@ async def resolve_user_tenant_schema(
     return "public"
 
 
-@router.post("/login", response_model=TokenResponse)
+@router.post("/login", response_model=TokenResponse, dependencies=[Depends(login_rate_limiter)])
 async def login(credentials: LoginRequest, db_session: AsyncSession = Depends(get_db)):
     stmt = select(AdminUser).where(AdminUser.username == credentials.username.strip())
     result = await db_session.execute(stmt)

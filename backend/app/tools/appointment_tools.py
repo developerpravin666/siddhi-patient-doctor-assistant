@@ -11,11 +11,20 @@ from app.services.database_service import db
 logger = logging.getLogger("appointment_tools")
 
 
-def is_doctor_working_on_date(available_days_str: Optional[str], date_str: str) -> bool:
+def is_doctor_working_on_date(
+    available_days_str: Optional[str],
+    date_str: str,
+    leave_dates_str: Optional[str] = None
+) -> bool:
     """
-    Checks if a doctor is scheduled to work on the weekday of `date_str` ('YYYY-MM-DD')
-    based on `available_days_str` (e.g. 'Mon,Tue,Wed,Thu,Fri,Sat', 'Monday - Saturday', 'Mon-Fri', 'Daily').
+    Checks if a doctor is scheduled to work on `date_str` ('YYYY-MM-DD')
+    based on `available_days_str` and `leave_dates_str` (comma-separated YYYY-MM-DD holidays/leaves).
     """
+    if leave_dates_str:
+        blocked_dates = {d.strip() for d in leave_dates_str.split(",") if d.strip()}
+        if date_str in blocked_dates:
+            return False
+
     days_str = (available_days_str or "Mon,Tue,Wed,Thu,Fri,Sat").lower()
     target_weekday = datetime.strptime(date_str, "%Y-%m-%d").strftime("%A").lower()
     short_day = target_weekday[:3]
@@ -109,7 +118,7 @@ async def get_available_slots(
             doctors = res.scalars().all()
 
             for doc in doctors:
-                if not is_doctor_working_on_date(doc.available_days, target_date):
+                if not is_doctor_working_on_date(doc.available_days, target_date, getattr(doc, "leave_dates", None)):
                     if len(doctors) == 1:
                         # Doctor explicitly not available on this day
                         doctor_name = doc.name

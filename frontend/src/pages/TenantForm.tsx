@@ -21,6 +21,7 @@ import {
 } from 'lucide-react';
 import { z } from 'zod';
 import { getTenant, createTenant, updateTenant } from '../api/client';
+import { clearOrValidateField } from '../utils/validation';
 
 const tenantCreateSchema = z.object({
   name: z.string().trim()
@@ -246,42 +247,66 @@ export const TenantForm: React.FC = () => {
   }
 
   return (
-    <div className="max-w-4xl mx-auto space-y-6">
+    <div className="w-full space-y-3.5">
       {/* Header Bar */}
-      <div className="flex items-center justify-between">
-        <Link
-          to="/tenants"
-          className="inline-flex items-center gap-2 text-xs font-bold text-slate-500 hover:text-purple-600 transition"
-        >
-          <ArrowLeft className="w-4 h-4" />
-          <span>Back to Clinic Tenants</span>
+      <div className="flex items-center justify-between gap-3 pb-2.5 border-b border-slate-200">
+        <div className="flex items-center gap-2.5">
+          <Link
+            to="/tenants"
+            className="p-1.5 text-slate-500 hover:text-slate-800 hover:bg-slate-100 rounded-lg transition"
+            title="Back to Clinic Tenants"
+          >
+            <ArrowLeft className="w-4 h-4" />
+          </Link>
+          <div>
+            <div className="flex items-center gap-2">
+              <span className="p-1.5 bg-purple-50 text-purple-600 rounded-lg">
+                <Building2 className="w-4 h-4" />
+              </span>
+              <h1 className="text-lg font-bold text-slate-900">
+                {isEditMode ? 'Edit Clinic Tenant Profile' : 'Onboard New Clinic Tenant'}
+              </h1>
+              <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-purple-100 text-purple-800">
+                Schema-Per-Tenant
+              </span>
+            </div>
+            <p className="text-[11px] text-slate-500 mt-0.5">
+              {isEditMode
+                ? 'Update clinic contact, owner details, and active status.'
+                : 'Provisions a dedicated PostgreSQL schema with independent clinical tables, doctors, and staff.'}
+            </p>
+          </div>
+        </div>
+
+        <Link to="/tenants" className="ui-btn-secondary">
+          Cancel
         </Link>
       </div>
 
       {/* Success Reveal Card (Post-Onboarding) */}
       {onboardedResult ? (
-        <div className="bg-white rounded-3xl border border-emerald-200 p-8 shadow-xl space-y-6 animate-in fade-in">
-          <div className="flex items-start gap-4">
-            <div className="w-12 h-12 rounded-2xl bg-emerald-100 flex items-center justify-center text-emerald-600 shrink-0">
-              <CheckCircle2 className="w-7 h-7" />
+        <div className="ui-card border-emerald-200 space-y-4 animate-in fade-in">
+          <div className="flex items-start gap-3">
+            <div className="w-9 h-9 rounded-lg bg-emerald-100 flex items-center justify-center text-emerald-600 shrink-0">
+              <CheckCircle2 className="w-5 h-5" />
             </div>
             <div>
-              <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-emerald-100 text-emerald-800 uppercase tracking-wider">
+              <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-100 text-emerald-800 uppercase tracking-wider">
                 Provisioning Complete
               </span>
-              <h2 className="text-xl font-extrabold text-slate-900 mt-1">
+              <h2 className="text-base font-bold text-slate-900 mt-0.5">
                 Clinic Tenant Onboarded Successfully!
               </h2>
-              <p className="text-xs text-slate-500 mt-1">
+              <p className="text-xs text-slate-500">
                 An isolated PostgreSQL schema was provisioned via DDL with independent clinical tables.
               </p>
             </div>
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 p-5 rounded-2xl bg-slate-50 border border-slate-200 text-xs">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3 p-3 rounded-lg bg-slate-50 border border-slate-200 text-xs">
             <div>
               <span className="text-slate-400 font-semibold block text-[11px]">Clinic Name</span>
-              <span className="text-slate-900 font-bold text-sm">{onboardedResult.name}</span>
+              <span className="text-slate-900 font-bold">{onboardedResult.name}</span>
             </div>
             <div>
               <span className="text-slate-400 font-semibold block text-[11px]">Isolated PostgreSQL Schema</span>
@@ -292,48 +317,48 @@ export const TenantForm: React.FC = () => {
           </div>
 
           {/* Credentials Box */}
-          <div className="p-5 rounded-2xl bg-purple-50/70 border border-purple-200 space-y-3">
+          <div className="p-3.5 rounded-lg bg-purple-50/70 border border-purple-200 space-y-2.5">
             <div className="flex items-center gap-2 text-purple-900 font-bold text-xs">
               <KeyRound className="w-4 h-4 text-purple-600" />
               <span>Initial Clinic Admin Login Credentials:</span>
             </div>
 
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
-              <div className="flex items-center justify-between p-3 rounded-xl bg-white border border-purple-100">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 text-xs">
+              <div className="flex items-center justify-between px-3 py-2 rounded-lg bg-white border border-purple-100">
                 <div>
                   <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Username</span>
-                  <span className="font-mono font-bold text-slate-900 text-sm">{onboardedResult.username}</span>
+                  <span className="font-mono font-bold text-slate-900">{onboardedResult.username}</span>
                 </div>
                 <button
                   onClick={() => copyToClipboard(onboardedResult.username, 'uname')}
-                  className="p-1.5 rounded-lg text-slate-400 hover:text-purple-600 hover:bg-purple-50 transition"
+                  className="p-1 rounded-md text-slate-400 hover:text-purple-600 hover:bg-purple-50 transition"
                   title="Copy username"
                 >
-                  {copiedKey === 'uname' ? <Check className="w-4 h-4 text-emerald-600" /> : <Copy className="w-4 h-4" />}
+                  {copiedKey === 'uname' ? <Check className="w-3.5 h-3.5 text-emerald-600" /> : <Copy className="w-3.5 h-3.5" />}
                 </button>
               </div>
 
-              <div className="flex items-center justify-between p-3 rounded-xl bg-white border border-purple-100">
+              <div className="flex items-center justify-between px-3 py-2 rounded-lg bg-white border border-purple-100">
                 <div>
                   <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Password</span>
-                  <span className="font-mono font-bold text-slate-900 text-sm">{onboardedResult.password}</span>
+                  <span className="font-mono font-bold text-slate-900">{onboardedResult.password}</span>
                 </div>
                 <button
                   onClick={() => copyToClipboard(onboardedResult.password, 'pwd')}
-                  className="p-1.5 rounded-lg text-slate-400 hover:text-purple-600 hover:bg-purple-50 transition"
+                  className="p-1 rounded-md text-slate-400 hover:text-purple-600 hover:bg-purple-50 transition"
                   title="Copy password"
                 >
-                  {copiedKey === 'pwd' ? <Check className="w-4 h-4 text-emerald-600" /> : <Copy className="w-4 h-4" />}
+                  {copiedKey === 'pwd' ? <Check className="w-3.5 h-3.5 text-emerald-600" /> : <Copy className="w-3.5 h-3.5" />}
                 </button>
               </div>
             </div>
 
             <p className="text-[11px] text-purple-700">
-              Share these credentials securely with the Clinic Doctor or Front Desk Admin. They can immediately log in to manage doctors, working hours, and WhatsApp bookings.
+              Share these credentials securely with the Clinic Doctor or Front Desk Admin.
             </p>
           </div>
 
-          <div className="flex items-center justify-end gap-3 pt-2">
+          <div className="flex items-center justify-end gap-2.5 pt-1">
             <button
               onClick={() => {
                 setOnboardedResult(null);
@@ -345,7 +370,7 @@ export const TenantForm: React.FC = () => {
                 setAdminUsername('');
                 setAdminPassword('clinic123');
               }}
-              className="px-4 py-2.5 rounded-xl border border-slate-200 text-xs font-bold text-slate-700 hover:bg-slate-50 transition flex items-center gap-1.5"
+              className="ui-btn-secondary"
             >
               <RotateCcw className="w-3.5 h-3.5" />
               <span>Onboard Another Clinic</span>
@@ -353,7 +378,7 @@ export const TenantForm: React.FC = () => {
 
             <button
               onClick={() => navigate('/tenants')}
-              className="px-5 py-2.5 rounded-xl bg-purple-600 hover:bg-purple-700 text-white font-bold text-xs transition shadow-sm"
+              className="ui-btn-primary bg-purple-600 hover:bg-purple-700"
             >
               Return to Clinic Tenants Directory
             </button>
@@ -361,326 +386,265 @@ export const TenantForm: React.FC = () => {
         </div>
       ) : (
         /* Form Card */
-        <div className="bg-white rounded-3xl border border-slate-200/80 shadow-sm overflow-hidden">
-          {/* Card Title Banner */}
-          <div className="p-6 sm:p-8 bg-gradient-to-r from-purple-50 via-indigo-50/40 to-white border-b border-slate-100 flex items-start gap-4">
-            <div className="w-12 h-12 rounded-2xl bg-purple-600 text-white flex items-center justify-center shadow-md shadow-purple-600/20 shrink-0">
-              <Building2 className="w-6 h-6" />
-            </div>
-            <div>
-              <div className="flex items-center gap-2">
-                <h1 className="text-xl font-bold text-slate-900">
-                  {isEditMode ? 'Edit Clinic Tenant Profile' : 'Onboard New Clinic Tenant'}
-                </h1>
-                <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-purple-100 text-purple-800">
-                  Schema-Per-Tenant
-                </span>
-              </div>
-              <p className="text-xs text-slate-500 mt-1">
-                {isEditMode
-                  ? 'Update clinic contact, owner details, and active status.'
-                  : 'Provisions a dedicated PostgreSQL schema via DDL with independent clinical tables, doctors, and staff.'}
-              </p>
-            </div>
-          </div>
-
+        <form onSubmit={handleSubmit} className="space-y-3.5">
           {errorMessage && (
-            <div className="mx-6 sm:mx-8 mt-6 p-3.5 rounded-xl bg-rose-50 border border-rose-200 text-rose-800 text-xs flex items-center gap-2 font-semibold">
+            <div className="p-3 rounded-lg bg-rose-50 border border-rose-200 text-rose-800 text-xs flex items-center gap-2 font-semibold">
               <AlertCircle className="w-4 h-4 text-rose-600 shrink-0" />
               <span>{errorMessage}</span>
             </div>
           )}
 
-          <form onSubmit={handleSubmit} className="p-6 sm:p-8 space-y-6">
-            {/* Section 1: Clinic & Schema Identity */}
-            <div className="space-y-4">
-              <div className="flex items-center gap-2 pb-2 border-b border-slate-100">
-                <Building2 className="w-4 h-4 text-purple-600" />
-                <h3 className="text-xs font-bold uppercase tracking-wider text-slate-500">
-                  1. Clinic & Database Schema
-                </h3>
+          {/* Section 1: Clinic & Schema Identity */}
+          <div className="ui-card space-y-3">
+            <div className="flex items-center gap-2 pb-2 border-b border-slate-100">
+              <Building2 className="w-4 h-4 text-purple-600" />
+              <h3 className="text-xs font-bold uppercase tracking-wider text-slate-600">
+                1. Clinic & Database Schema
+              </h3>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+              <div>
+                <label className="ui-label">
+                  Clinic / Hospital Name <span className="text-rose-500">*</span>
+                </label>
+                <input
+                  type="text"
+                  value={clinicName}
+                  onChange={(e) => handleClinicNameChange(e.target.value)}
+                  placeholder="e.g. Apex Multispeciality Hospital"
+                  className={`ui-input ${fieldErrors.name ? 'border-rose-400 bg-rose-50' : ''}`}
+                />
+                {fieldErrors.name && (
+                  <p className="text-[11px] text-rose-600 font-medium mt-1">{fieldErrors.name}</p>
+                )}
               </div>
 
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-xs font-bold text-slate-700 mb-1">
-                    Clinic / Hospital Name <span className="text-rose-500">*</span>
-                  </label>
+              <div>
+                <label className="ui-label">
+                  Tenant PostgreSQL Schema <span className="text-rose-500">*</span>
+                </label>
+                <div className="relative">
+                  <Database className="w-3.5 h-3.5 absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400" />
                   <input
                     type="text"
-                    value={clinicName}
-                    onChange={(e) => handleClinicNameChange(e.target.value)}
-                    placeholder="e.g. Apex Multispeciality Hospital"
-                    className={`w-full px-3.5 py-2.5 rounded-xl border text-xs outline-none transition focus:ring-2 ${fieldErrors.name
-                        ? 'border-rose-300 ring-rose-500/20 bg-rose-50/20'
-                        : 'border-slate-200 focus:ring-purple-500/20 focus:border-purple-500'
-                      }`}
+                    disabled={isEditMode}
+                    value={schemaName}
+                    onChange={(e) => {
+                      const val = e.target.value.toLowerCase();
+                      setSchemaName(val);
+                      setFieldErrors((prev) => clearOrValidateField(tenantCreateSchema, 'schema_name', val.trim(), prev));
+                    }}
+                    placeholder="e.g. clinic_apex_hospital"
+                    className={`ui-input pl-8 font-mono ${isEditMode ? 'bg-slate-100 text-slate-500 cursor-not-allowed' : fieldErrors.schema_name ? 'border-rose-400 bg-rose-50' : ''}`}
                   />
-                  {fieldErrors.name && (
-                    <p className="text-[11px] text-rose-600 font-semibold mt-1 flex items-center gap-1">
-                      <AlertCircle className="w-3 h-3" /> {fieldErrors.name}
-                    </p>
-                  )}
                 </div>
+                {fieldErrors.schema_name ? (
+                  <p className="text-[11px] text-rose-600 font-medium mt-1">{fieldErrors.schema_name}</p>
+                ) : (
+                  <p className="text-[10px] text-slate-400 mt-1">
+                    Must start with <code className="text-purple-600 font-bold">clinic_</code> or <code className="text-purple-600 font-bold">tenant_</code>
+                  </p>
+                )}
+              </div>
 
-                <div>
-                  <label className="block text-xs font-bold text-slate-700 mb-1">
-                    Tenant PostgreSQL Schema <span className="text-rose-500">*</span>
-                  </label>
-                  <div className="relative">
-                    <Database className="w-3.5 h-3.5 absolute left-3 top-3 text-slate-400" />
-                    <input
-                      type="text"
-                      disabled={isEditMode}
-                      value={schemaName}
-                      onChange={(e) => {
-                        setSchemaName(e.target.value.toLowerCase());
-                        if (fieldErrors.schema_name) {
-                          setFieldErrors((prev) => ({ ...prev, schema_name: '' }));
-                        }
-                      }}
-                      placeholder="e.g. clinic_apex_hospital"
-                      className={`w-full pl-9 pr-3.5 py-2.5 rounded-xl border text-xs font-mono outline-none transition ${isEditMode
-                          ? 'bg-slate-100 text-slate-500 cursor-not-allowed border-slate-200'
-                          : fieldErrors.schema_name
-                            ? 'border-rose-300 ring-rose-500/20 bg-rose-50/20'
-                            : 'border-slate-200 bg-slate-50 focus:bg-white focus:ring-2 focus:ring-purple-500/20 focus:border-purple-500'
-                        }`}
-                    />
-                  </div>
-                  {fieldErrors.schema_name ? (
-                    <p className="text-[11px] text-rose-600 font-semibold mt-1 flex items-center gap-1">
-                      <AlertCircle className="w-3 h-3" /> {fieldErrors.schema_name}
-                    </p>
-                  ) : (
-                    <p className="text-[10px] text-slate-400 mt-1">
-                      Must start with <code className="text-purple-600 font-bold">clinic_  or tenant_</code>. Contains isolated appointments, patients, and doctors.
-                    </p>
-                  )}
+              <div>
+                <label className="ui-label">Tenant Status</label>
+                <div className="flex items-center gap-2 h-8">
+                  <button
+                    type="button"
+                    onClick={() => setStatus('ACTIVE')}
+                    className={`h-8 px-3 rounded-lg text-xs font-semibold transition flex items-center gap-1.5 border ${status === 'ACTIVE'
+                        ? 'bg-emerald-50 border-emerald-300 text-emerald-800'
+                        : 'border-slate-200 text-slate-600 hover:bg-slate-50'
+                      }`}
+                  >
+                    <CheckCircle2 className={`w-3.5 h-3.5 ${status === 'ACTIVE' ? 'text-emerald-600' : 'text-slate-400'}`} />
+                    <span>ACTIVE</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setStatus('SUSPENDED')}
+                    className={`h-8 px-3 rounded-lg text-xs font-semibold transition flex items-center gap-1.5 border ${status === 'SUSPENDED'
+                        ? 'bg-rose-50 border-rose-300 text-rose-800'
+                        : 'border-slate-200 text-slate-600 hover:bg-slate-50'
+                      }`}
+                  >
+                    <AlertCircle className={`w-3.5 h-3.5 ${status === 'SUSPENDED' ? 'text-rose-600' : 'text-slate-400'}`} />
+                    <span>SUSPENDED</span>
+                  </button>
                 </div>
               </div>
             </div>
+          </div>
 
-            {/* Section 2: Owner & Chief Doctor Details */}
-            <div className="space-y-4 pt-2">
-              <div className="flex items-center gap-2 pb-2 border-b border-slate-100">
-                <Stethoscope className="w-4 h-4 text-emerald-600" />
-                <h3 className="text-xs font-bold uppercase tracking-wider text-slate-500">
-                  2. Owner & Chief Doctor Details
-                </h3>
-              </div>
-
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-                <div>
-                  <label className="block text-xs font-bold text-slate-700 mb-1">Owner / Chief Doctor</label>
-                  <div className="relative">
-                    <User className="w-3.5 h-3.5 absolute left-3 top-3 text-slate-400" />
-                    <input
-                      type="text"
-                      value={ownerName}
-                      onChange={(e) => {
-                        setOwnerName(e.target.value);
-                        if (fieldErrors.owner_name) setFieldErrors((prev) => ({ ...prev, owner_name: '' }));
-                      }}
-                      placeholder="e.g. Dr. Rajesh Sharma"
-                      className="w-full pl-9 pr-3.5 py-2.5 rounded-xl border border-slate-200 text-xs focus:ring-2 focus:ring-purple-500/20 focus:border-purple-500 outline-none"
-                    />
-                  </div>
-                  {fieldErrors.owner_name && (
-                    <p className="text-[11px] text-rose-600 font-semibold mt-1 flex items-center gap-1">
-                      <AlertCircle className="w-3 h-3" /> {fieldErrors.owner_name}
-                    </p>
-                  )}
-                </div>
-
-                <div>
-                  <label className="block text-xs font-bold text-slate-700 mb-1">Contact Phone</label>
-                  <div className="relative">
-                    <Phone className="w-3.5 h-3.5 absolute left-3 top-3 text-slate-400" />
-                    <input
-                      type="text"
-                      value={ownerPhone}
-                      onChange={(e) => {
-                        setOwnerPhone(e.target.value);
-                        if (fieldErrors.owner_phone) setFieldErrors((prev) => ({ ...prev, owner_phone: '' }));
-                      }}
-                      placeholder="e.g. +91 98765 43210"
-                      className="w-full pl-9 pr-3.5 py-2.5 rounded-xl border border-slate-200 text-xs focus:ring-2 focus:ring-purple-500/20 focus:border-purple-500 outline-none"
-                    />
-                  </div>
-                  {fieldErrors.owner_phone && (
-                    <p className="text-[11px] text-rose-600 font-semibold mt-1 flex items-center gap-1">
-                      <AlertCircle className="w-3 h-3" /> {fieldErrors.owner_phone}
-                    </p>
-                  )}
-                </div>
-
-                <div>
-                  <label className="block text-xs font-bold text-slate-700 mb-1">Owner Email</label>
-                  <div className="relative">
-                    <Mail className="w-3.5 h-3.5 absolute left-3 top-3 text-slate-400" />
-                    <input
-                      type="email"
-                      value={ownerEmail}
-                      onChange={(e) => {
-                        setOwnerEmail(e.target.value);
-                        if (fieldErrors.owner_email) setFieldErrors((prev) => ({ ...prev, owner_email: '' }));
-                      }}
-                      placeholder="e.g. contact@apexhospital.in"
-                      className="w-full pl-9 pr-3.5 py-2.5 rounded-xl border border-slate-200 text-xs focus:ring-2 focus:ring-purple-500/20 focus:border-purple-500 outline-none"
-                    />
-                  </div>
-                  {fieldErrors.owner_email && (
-                    <p className="text-[11px] text-rose-600 font-semibold mt-1 flex items-center gap-1">
-                      <AlertCircle className="w-3 h-3" /> {fieldErrors.owner_email}
-                    </p>
-                  )}
-                </div>
-              </div>
+          {/* Section 2: Owner & Chief Doctor Details */}
+          <div className="ui-card space-y-3">
+            <div className="flex items-center gap-2 pb-2 border-b border-slate-100">
+              <Stethoscope className="w-4 h-4 text-emerald-600" />
+              <h3 className="text-xs font-bold uppercase tracking-wider text-slate-600">
+                2. Owner & Chief Doctor Details
+              </h3>
             </div>
 
-            {/* Section 3: Initial Clinic Admin Account (Create mode only) */}
-            {!isEditMode && (
-              <div className="space-y-4 pt-2">
-                <div className="flex items-center gap-2 pb-2 border-b border-slate-100">
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+              <div>
+                <label className="ui-label">Owner / Chief Doctor</label>
+                <div className="relative">
+                  <User className="w-3.5 h-3.5 absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400" />
+                  <input
+                    type="text"
+                    value={ownerName}
+                    onChange={(e) => {
+                      const val = e.target.value;
+                      setOwnerName(val);
+                      setFieldErrors((prev) => clearOrValidateField(isEditMode ? tenantEditSchema : tenantCreateSchema, 'owner_name', val.trim() || undefined, prev));
+                    }}
+                    placeholder="e.g. Dr. Rajesh Sharma"
+                    className={`ui-input pl-8 ${fieldErrors.owner_name ? 'border-rose-400 bg-rose-50' : ''}`}
+                  />
+                </div>
+                {fieldErrors.owner_name && (
+                  <p className="text-[11px] text-rose-600 font-medium mt-1">{fieldErrors.owner_name}</p>
+                )}
+              </div>
+
+              <div>
+                <label className="ui-label">Contact Phone</label>
+                <div className="relative">
+                  <Phone className="w-3.5 h-3.5 absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400" />
+                  <input
+                    type="text"
+                    value={ownerPhone}
+                    onChange={(e) => {
+                      const val = e.target.value;
+                      setOwnerPhone(val);
+                      setFieldErrors((prev) => clearOrValidateField(isEditMode ? tenantEditSchema : tenantCreateSchema, 'owner_phone', val.trim() || undefined, prev));
+                    }}
+                    placeholder="e.g. +91 98765 43210"
+                    className={`ui-input pl-8 ${fieldErrors.owner_phone ? 'border-rose-400 bg-rose-50' : ''}`}
+                  />
+                </div>
+                {fieldErrors.owner_phone && (
+                  <p className="text-[11px] text-rose-600 font-medium mt-1">{fieldErrors.owner_phone}</p>
+                )}
+              </div>
+
+              <div>
+                <label className="ui-label">Owner Email</label>
+                <div className="relative">
+                  <Mail className="w-3.5 h-3.5 absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400" />
+                  <input
+                    type="email"
+                    value={ownerEmail}
+                    onChange={(e) => {
+                      const val = e.target.value;
+                      setOwnerEmail(val);
+                      setFieldErrors((prev) => clearOrValidateField(isEditMode ? tenantEditSchema : tenantCreateSchema, 'owner_email', val.trim() || undefined, prev));
+                    }}
+                    placeholder="e.g. contact@apexhospital.in"
+                    className={`ui-input pl-8 ${fieldErrors.owner_email ? 'border-rose-400 bg-rose-50' : ''}`}
+                  />
+                </div>
+                {fieldErrors.owner_email && (
+                  <p className="text-[11px] text-rose-600 font-medium mt-1">{fieldErrors.owner_email}</p>
+                )}
+              </div>
+            </div>
+          </div>
+
+          {/* Section 3: Initial Clinic Admin Account (Create mode only) */}
+          {!isEditMode && (
+            <div className="ui-card space-y-3">
+              <div className="flex items-center justify-between pb-2 border-b border-slate-100">
+                <div className="flex items-center gap-2">
                   <KeyRound className="w-4 h-4 text-purple-600" />
-                  <h3 className="text-xs font-bold uppercase tracking-wider text-slate-500">
+                  <h3 className="text-xs font-bold uppercase tracking-wider text-slate-600">
                     3. Initial Clinic Admin Account
                   </h3>
                 </div>
+                <span className="text-[11px] text-slate-400">Receives full CLINIC_ADMIN rights</span>
+              </div>
 
-                <div className="p-4 rounded-2xl bg-slate-50 border border-slate-200 space-y-4">
-                  <p className="text-xs text-slate-500">
-                    This account will receive full <code className="text-purple-600 font-bold">CLINIC_ADMIN</code> rights within the new tenant schema to configure working hours, add doctors, and manage staff.
-                  </p>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                <div>
+                  <label className="ui-label">
+                    Admin Username <span className="text-rose-500">*</span>
+                  </label>
+                  <input
+                    type="text"
+                    value={adminUsername}
+                    onChange={(e) => {
+                      const val = e.target.value;
+                      setAdminUsername(val);
+                      setFieldErrors((prev) => clearOrValidateField(tenantCreateSchema, 'admin_username', val.trim(), prev));
+                    }}
+                    placeholder="e.g. apex_admin"
+                    className={`ui-input font-mono ${fieldErrors.admin_username ? 'border-rose-400 bg-rose-50' : ''}`}
+                  />
+                  {fieldErrors.admin_username && (
+                    <p className="text-[11px] text-rose-600 font-medium mt-1">{fieldErrors.admin_username}</p>
+                  )}
+                </div>
 
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                    <div>
-                      <label className="block text-xs font-bold text-slate-700 mb-1">
-                        Admin Username <span className="text-rose-500">*</span>
-                      </label>
-                      <input
-                        type="text"
-                        value={adminUsername}
-                        onChange={(e) => {
-                          setAdminUsername(e.target.value);
-                          if (fieldErrors.admin_username) setFieldErrors((prev) => ({ ...prev, admin_username: '' }));
-                        }}
-                        placeholder="e.g. apex_admin"
-                        className={`w-full px-3.5 py-2 rounded-xl border text-xs font-mono bg-white outline-none focus:ring-2 ${fieldErrors.admin_username
-                            ? 'border-rose-300 ring-rose-500/20'
-                            : 'border-slate-200 focus:ring-purple-500/20 focus:border-purple-500'
-                          }`}
-                      />
-                      {fieldErrors.admin_username && (
-                        <p className="text-[11px] text-rose-600 font-semibold mt-1 flex items-center gap-1">
-                          <AlertCircle className="w-3 h-3" /> {fieldErrors.admin_username}
-                        </p>
-                      )}
-                    </div>
-
-                    <div>
-                      <label className="block text-xs font-bold text-slate-700 mb-1">
-                        Admin Password <span className="text-rose-500">*</span>
-                      </label>
-                      <div className="relative">
-                        <input
-                          type={showPassword ? 'text' : 'password'}
-                          value={adminPassword}
-                          onChange={(e) => {
-                            setAdminPassword(e.target.value);
-                            if (fieldErrors.admin_password) setFieldErrors((prev) => ({ ...prev, admin_password: '' }));
-                          }}
-                          placeholder="Default: clinic123"
-                          className={`w-full px-3.5 py-2 pr-10 rounded-xl border text-xs font-mono bg-white outline-none focus:ring-2 ${fieldErrors.admin_password
-                              ? 'border-rose-300 ring-rose-500/20'
-                              : 'border-slate-200 focus:ring-purple-500/20 focus:border-purple-500'
-                            }`}
-                        />
-                        <button
-                          type="button"
-                          onClick={() => setShowPassword(!showPassword)}
-                          className="absolute right-3 top-2.5 text-slate-400 hover:text-slate-600"
-                        >
-                          {showPassword ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
-                        </button>
-                      </div>
-                      {fieldErrors.admin_password && (
-                        <p className="text-[11px] text-rose-600 font-semibold mt-1 flex items-center gap-1">
-                          <AlertCircle className="w-3 h-3" /> {fieldErrors.admin_password}
-                        </p>
-                      )}
-                    </div>
+                <div>
+                  <label className="ui-label">
+                    Admin Password <span className="text-rose-500">*</span>
+                  </label>
+                  <div className="relative">
+                    <input
+                      type={showPassword ? 'text' : 'password'}
+                      value={adminPassword}
+                      onChange={(e) => {
+                        const val = e.target.value;
+                        setAdminPassword(val);
+                        setFieldErrors((prev) => clearOrValidateField(tenantCreateSchema, 'admin_password', val.trim(), prev));
+                      }}
+                      placeholder="Default: clinic123"
+                      className={`ui-input pr-9 font-mono ${fieldErrors.admin_password ? 'border-rose-400 bg-rose-50' : ''}`}
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowPassword(!showPassword)}
+                      className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
+                    >
+                      {showPassword ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
+                    </button>
                   </div>
+                  {fieldErrors.admin_password && (
+                    <p className="text-[11px] text-rose-600 font-medium mt-1">{fieldErrors.admin_password}</p>
+                  )}
                 </div>
               </div>
-            )}
-
-            {/* Section 4: Status */}
-            <div className="space-y-3 pt-2">
-              <div className="flex items-center gap-2 pb-2 border-b border-slate-100">
-                <Sparkles className="w-4 h-4 text-purple-600" />
-                <h3 className="text-xs font-bold uppercase tracking-wider text-slate-500">
-                  {isEditMode ? '3. Tenant Status' : '4. Initial Status'}
-                </h3>
-              </div>
-
-              <div className="flex items-center gap-3">
-                <button
-                  type="button"
-                  onClick={() => setStatus('ACTIVE')}
-                  className={`px-4 py-2 rounded-xl text-xs font-bold transition flex items-center gap-1.5 border ${status === 'ACTIVE'
-                      ? 'bg-emerald-50 border-emerald-300 text-emerald-800 shadow-xs'
-                      : 'border-slate-200 text-slate-600 hover:bg-slate-50'
-                    }`}
-                >
-                  <CheckCircle2 className={`w-3.5 h-3.5 ${status === 'ACTIVE' ? 'text-emerald-600' : 'text-slate-400'}`} />
-                  <span>ACTIVE (Operational)</span>
-                </button>
-
-                <button
-                  type="button"
-                  onClick={() => setStatus('SUSPENDED')}
-                  className={`px-4 py-2 rounded-xl text-xs font-bold transition flex items-center gap-1.5 border ${status === 'SUSPENDED'
-                      ? 'bg-rose-50 border-rose-300 text-rose-800 shadow-xs'
-                      : 'border-slate-200 text-slate-600 hover:bg-slate-50'
-                    }`}
-                >
-                  <AlertCircle className={`w-3.5 h-3.5 ${status === 'SUSPENDED' ? 'text-rose-600' : 'text-slate-400'}`} />
-                  <span>SUSPENDED</span>
-                </button>
-              </div>
             </div>
+          )}
 
-            {/* Form Actions */}
-            <div className="flex items-center justify-end gap-3 pt-4 border-t border-slate-100">
-              <Link
-                to="/tenants"
-                className="px-4 py-2.5 rounded-xl border border-slate-200 text-xs font-bold text-slate-600 hover:bg-slate-50 transition"
-              >
-                Cancel
-              </Link>
+          {/* Form Actions */}
+          <div className="flex items-center justify-end gap-2.5 pt-1">
+            <Link to="/tenants" className="ui-btn-secondary">
+              Cancel
+            </Link>
 
-              <button
-                type="submit"
-                disabled={saving}
-                className="px-6 py-2.5 rounded-xl bg-purple-600 hover:bg-purple-700 text-white font-bold text-xs transition shadow-sm hover:shadow-md flex items-center gap-2 disabled:opacity-60"
-              >
-                {saving ? (
-                  <>
-                    <div className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                    <span>Provisioning Schema via DDL...</span>
-                  </>
-                ) : (
-                  <>
-                    <Save className="w-3.5 h-3.5" />
-                    <span>{isEditMode ? 'Save Changes' : 'Provision Isolated Tenant'}</span>
-                  </>
-                )}
-              </button>
-            </div>
-          </form>
-        </div>
+            <button
+              type="submit"
+              disabled={saving}
+              className="ui-btn-primary bg-purple-600 hover:bg-purple-700"
+            >
+              {saving ? (
+                <>
+                  <div className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                  <span>Provisioning Schema...</span>
+                </>
+              ) : (
+                <>
+                  <Save className="w-3.5 h-3.5" />
+                  <span>{isEditMode ? 'Save Changes' : 'Provision Isolated Tenant'}</span>
+                </>
+              )}
+            </button>
+          </div>
+        </form>
       )}
     </div>
   );

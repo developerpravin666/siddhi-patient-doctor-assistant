@@ -14,8 +14,10 @@ def verify_whatsapp_signature(body_bytes: bytes, signature_header: Optional[str]
     """
     clean_secret = (secret or "").strip()
     if not clean_secret or clean_secret in ("your_meta_app_secret_here", "dummy_secret"):
-        # If secret is not configured or placeholder in development, allow request
-        return True
+        # Allow unsigned requests only in non-production environments when secret is unconfigured
+        if settings.ENV.lower() != "production":
+            return True
+        return False
 
     if not signature_header:
         # In development environment, allow requests if signature header is omitted (e.g. Meta dev test tool)
@@ -48,14 +50,14 @@ def mask_phone_number(phone: Optional[str]) -> str:
 
 def verify_password(plain_password: str, hashed_password: str) -> bool:
     """
-    Verifies password using direct bcrypt comparison with plaintext fallback for testing.
+    Verifies password using strict bcrypt comparison (no plaintext fallback).
     """
     if not plain_password or not hashed_password:
         return False
     try:
         return bcrypt.checkpw(plain_password.encode("utf-8"), hashed_password.encode("utf-8"))
     except Exception:
-        return plain_password == hashed_password
+        return False
 
 
 def get_password_hash(password: str) -> str:

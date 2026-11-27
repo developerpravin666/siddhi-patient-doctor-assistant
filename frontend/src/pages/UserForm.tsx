@@ -17,6 +17,7 @@ import { z } from 'zod';
 import { getUser, createUser, updateUser } from '../api/client';
 import { UserRole, ScreenPermissions, AppContextType } from '../types';
 import { SearchableSelect } from '../components/SearchableSelect';
+import { clearOrValidateField } from '../utils/validation';
 
 const DEFAULT_FRONTDESK_PERMISSIONS: ScreenPermissions = {
   appointments: { view: true, create: true, edit: true, delete: false },
@@ -198,30 +199,30 @@ export const UserForm: React.FC = () => {
   }
 
   return (
-    <div className="max-w-4xl mx-auto space-y-6">
+    <div className="w-full space-y-3.5">
       {/* Top Breadcrumb & Header */}
-      <div className="flex items-center justify-between gap-4 pb-4 border-b border-slate-200">
-        <div className="flex items-center gap-3">
+      <div className="flex items-center justify-between gap-3 pb-2.5 border-b border-slate-200">
+        <div className="flex items-center gap-2.5">
           <Link
             to="/users"
-            className="p-2 text-slate-500 hover:text-slate-800 hover:bg-slate-100 rounded-xl transition"
+            className="p-1.5 text-slate-500 hover:text-slate-800 hover:bg-slate-100 rounded-lg transition"
             title="Back to Staff Directory"
           >
-            <ArrowLeft className="w-5 h-5" />
+            <ArrowLeft className="w-4 h-4" />
           </Link>
           <div>
             <div className="flex items-center gap-2">
-              <span className="p-2 bg-indigo-50 text-indigo-600 rounded-xl">
-                <UserCheck className="w-5 h-5" />
+              <span className="p-1.5 bg-indigo-50 text-indigo-600 rounded-lg">
+                <UserCheck className="w-4 h-4" />
               </span>
-              <h1 className="text-2xl font-bold text-slate-900">
+              <h1 className="text-lg font-bold text-slate-900">
                 {isEditMode ? 'Edit Staff Account' : 'Create Clinic Staff & Front Desk Account'}
               </h1>
             </div>
-            <p className="text-xs text-slate-500 mt-0.5">
+            <p className="text-[11px] text-slate-500 mt-0.5">
               {isEditMode
                 ? 'Update credentials, role assignment, and granular screen access.'
-                : 'Add a new receptionist or staff member and customize their screen permissions.'}
+                : 'Add a receptionist or staff member and customize their screen permissions.'}
             </p>
           </div>
         </div>
@@ -229,7 +230,7 @@ export const UserForm: React.FC = () => {
         <button
           type="button"
           onClick={() => navigate('/users')}
-          className="px-4 py-2 text-sm text-slate-600 hover:text-slate-800 border border-slate-200 rounded-xl hover:bg-slate-50 transition"
+          className="ui-btn-secondary"
         >
           Cancel
         </button>
@@ -237,39 +238,41 @@ export const UserForm: React.FC = () => {
 
       {/* Error Alert */}
       {errorMessage && (
-        <div className="p-4 bg-rose-50 border border-rose-200 text-rose-800 rounded-xl text-sm flex items-center gap-2.5">
-          <AlertCircle className="w-5 h-5 text-rose-600 flex-shrink-0" />
+        <div className="p-3 bg-rose-50 border border-rose-200 text-rose-800 rounded-lg text-xs flex items-center gap-2">
+          <AlertCircle className="w-4 h-4 text-rose-600 flex-shrink-0" />
           <span>{errorMessage}</span>
         </div>
       )}
 
       {/* Form */}
-      <form onSubmit={handleSubmit} className="space-y-6">
-        <div className="bg-white border border-slate-200 rounded-2xl p-6 shadow-sm space-y-6">
-          <h2 className="text-base font-bold text-slate-800 flex items-center gap-2 pb-3 border-b border-slate-100">
+      <form onSubmit={handleSubmit} className="space-y-3.5">
+        <div className="ui-card space-y-3">
+          <h2 className="text-sm font-bold text-slate-800 flex items-center gap-2 pb-2 border-b border-slate-100">
             <KeyRound className="w-4 h-4 text-indigo-600" />
             Basic Profile & Login Credentials
           </h2>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
             <div>
-              <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5">
+              <label className="ui-label">
                 Full Name <span className="text-rose-500">*</span>
               </label>
               <input
                 type="text"
                 placeholder="e.g. Priya Sharma"
                 value={fullName}
-                onChange={(e) => setFullName(e.target.value)}
-                className={`w-full px-3.5 py-2.5 rounded-xl border ${
-                  errors.fullName ? 'border-rose-400 bg-rose-50' : 'border-slate-300'
-                } text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500`}
+                onChange={(e) => {
+                  const val = e.target.value;
+                  setFullName(val);
+                  setErrors((prev) => clearOrValidateField(userSchema, 'fullName', val, prev));
+                }}
+                className={`ui-input ${errors.fullName ? 'border-rose-400 bg-rose-50' : ''}`}
               />
-              {errors.fullName && <p className="text-xs text-rose-600 mt-1 font-medium">{errors.fullName}</p>}
+              {errors.fullName && <p className="text-[11px] text-rose-600 mt-1 font-medium">{errors.fullName}</p>}
             </div>
 
             <div>
-              <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5">
+              <label className="ui-label">
                 Username <span className="text-rose-500">*</span>
               </label>
               <input
@@ -277,40 +280,40 @@ export const UserForm: React.FC = () => {
                 disabled={isEditMode}
                 placeholder="e.g. priya_frontdesk"
                 value={username}
-                onChange={(e) => setUsername(e.target.value)}
-                className={`w-full px-3.5 py-2.5 rounded-xl border ${
-                  errors.username ? 'border-rose-400 bg-rose-50' : 'border-slate-300'
-                } text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 ${
+                onChange={(e) => {
+                  const val = e.target.value;
+                  setUsername(val);
+                  setErrors((prev) => clearOrValidateField(userSchema, 'username', val, prev));
+                }}
+                className={`ui-input ${errors.username ? 'border-rose-400 bg-rose-50' : ''} ${
                   isEditMode ? 'bg-slate-100 text-slate-500 cursor-not-allowed' : ''
                 }`}
               />
-              {isEditMode ? (
-                <p className="text-[11px] text-slate-400 mt-1">Username cannot be changed after creation.</p>
-              ) : errors.username ? (
-                <p className="text-xs text-rose-600 mt-1 font-medium">{errors.username}</p>
-              ) : (
-                <p className="text-[11px] text-slate-400 mt-1">Unique login handle used to sign in.</p>
+              {errors.username && (
+                <p className="text-[11px] text-rose-600 mt-1 font-medium">{errors.username}</p>
               )}
             </div>
 
             <div>
-              <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5">
-                Password {isEditMode ? <span className="text-slate-400 text-xs font-normal">(Leave blank to keep current)</span> : <span className="text-rose-500">*</span>}
+              <label className="ui-label">
+                Password {isEditMode ? <span className="text-slate-400 font-normal">(Optional)</span> : <span className="text-rose-500">*</span>}
               </label>
               <input
                 type="password"
                 placeholder={isEditMode ? '••••••••' : 'Minimum 6 characters'}
                 value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                className={`w-full px-3.5 py-2.5 rounded-xl border ${
-                  errors.password ? 'border-rose-400 bg-rose-50' : 'border-slate-300'
-                } text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500`}
+                onChange={(e) => {
+                  const val = e.target.value;
+                  setPassword(val);
+                  setErrors((prev) => clearOrValidateField(userSchema, 'password', val, prev));
+                }}
+                className={`ui-input ${errors.password ? 'border-rose-400 bg-rose-50' : ''}`}
               />
-              {errors.password && <p className="text-xs text-rose-600 mt-1 font-medium">{errors.password}</p>}
+              {errors.password && <p className="text-[11px] text-rose-600 mt-1 font-medium">{errors.password}</p>}
             </div>
 
             <div>
-              <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5">
+              <label className="ui-label">
                 Account Role <span className="text-rose-500">*</span>
               </label>
               <SearchableSelect
@@ -319,57 +322,52 @@ export const UserForm: React.FC = () => {
                 disabled={currentUserRole === 'CLINIC_ADMIN' && role !== 'RECEPTIONIST'}
                 searchable={false}
                 options={[
-                  { value: 'RECEPTIONIST', label: 'Receptionist / Front Desk (Custom Permissions)' },
+                  { value: 'RECEPTIONIST', label: 'Receptionist / Front Desk' },
                   ...(currentUserRole === 'SUPER_ADMIN' ? [
-                    { value: 'CLINIC_ADMIN', label: 'Clinic Admin / Doctor (Full Clinic Access)' },
-                    { value: 'SUPER_ADMIN', label: 'Super Admin (Product Owner)' },
+                    { value: 'CLINIC_ADMIN', label: 'Clinic Admin / Doctor' },
+                    { value: 'SUPER_ADMIN', label: 'Super Admin' },
                   ] : []),
                 ]}
               />
-              <p className="text-[11px] text-slate-400 mt-1">
-                {role === 'RECEPTIONIST' 
-                  ? 'Front Desk users have configurable screen and action access.'
-                  : 'Clinic Admins have full access to all clinic operations.'}
-              </p>
             </div>
           </div>
         </div>
 
         {/* Screen Permissions Matrix for Receptionist */}
         {role === 'RECEPTIONIST' && (
-          <div className="bg-white border border-slate-200 rounded-2xl p-6 shadow-sm space-y-5">
-            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 pb-3 border-b border-slate-100">
+          <div className="ui-card space-y-3">
+            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 pb-2 border-b border-slate-100">
               <div>
-                <h2 className="text-base font-bold text-slate-800 flex items-center gap-2">
+                <h2 className="text-sm font-bold text-slate-800 flex items-center gap-2">
                   <Shield className="w-4 h-4 text-indigo-600" />
                   Granular Screen Access & Action Permissions Matrix
                 </h2>
-                <p className="text-xs text-slate-500 mt-0.5">
-                  Specify exactly which screens this front desk staff can view, create, edit, or delete.
+                <p className="text-[11px] text-slate-500 mt-0.5">
+                  Specify which screens this staff member can view, create, edit, or delete.
                 </p>
               </div>
 
               {/* Presets */}
               <div className="flex items-center gap-1.5 flex-wrap">
-                <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider mr-1">Presets:</span>
+                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mr-1">Presets:</span>
                 <button
                   type="button"
                   onClick={() => applyPreset('standard')}
-                  className="px-2.5 py-1 text-xs font-semibold bg-indigo-50 text-indigo-700 hover:bg-indigo-100 rounded-lg transition"
+                  className="px-2 py-1 text-xs font-semibold bg-indigo-50 text-indigo-700 hover:bg-indigo-100 rounded-lg transition"
                 >
                   Front Desk Default
                 </button>
                 <button
                   type="button"
                   onClick={() => applyPreset('read_only')}
-                  className="px-2.5 py-1 text-xs font-semibold bg-slate-100 text-slate-700 hover:bg-slate-200 rounded-lg transition"
+                  className="px-2 py-1 text-xs font-semibold bg-slate-100 text-slate-700 hover:bg-slate-200 rounded-lg transition"
                 >
                   View Only
                 </button>
                 <button
                   type="button"
                   onClick={() => applyPreset('full')}
-                  className="px-2.5 py-1 text-xs font-semibold bg-emerald-50 text-emerald-700 hover:bg-emerald-100 rounded-lg transition"
+                  className="px-2 py-1 text-xs font-semibold bg-emerald-50 text-emerald-700 hover:bg-emerald-100 rounded-lg transition"
                 >
                   Full Access
                 </button>
@@ -385,27 +383,27 @@ export const UserForm: React.FC = () => {
             </div>
 
             {/* Permission Table */}
-            <div className="overflow-x-auto border border-slate-200 rounded-xl">
-              <table className="w-full text-left text-sm">
-                <thead className="bg-slate-50 text-xs font-bold text-slate-500 uppercase tracking-wider border-b border-slate-200">
+            <div className="overflow-x-auto border border-slate-200 rounded-lg">
+              <table className="w-full text-left text-xs">
+                <thead className="bg-slate-50 text-[11px] font-bold text-slate-500 uppercase tracking-wider border-b border-slate-200">
                   <tr>
-                    <th className="px-4 py-3">Screen Feature</th>
-                    <th className="px-3 py-3 text-center">
+                    <th className="px-3 py-2">Screen Feature</th>
+                    <th className="px-3 py-2 text-center">
                       <span className="inline-flex items-center gap-1 text-indigo-600">
                         <Eye className="w-3.5 h-3.5" /> View
                       </span>
                     </th>
-                    <th className="px-3 py-3 text-center">
+                    <th className="px-3 py-2 text-center">
                       <span className="inline-flex items-center gap-1 text-emerald-600">
                         <PlusCircle className="w-3.5 h-3.5" /> Add
                       </span>
                     </th>
-                    <th className="px-3 py-3 text-center">
+                    <th className="px-3 py-2 text-center">
                       <span className="inline-flex items-center gap-1 text-amber-600">
                         <Edit3 className="w-3.5 h-3.5" /> Edit
                       </span>
                     </th>
-                    <th className="px-3 py-3 text-center">
+                    <th className="px-3 py-2 text-center">
                       <span className="inline-flex items-center gap-1 text-rose-600">
                         <Trash2 className="w-3.5 h-3.5" /> Delete
                       </span>
@@ -423,48 +421,48 @@ export const UserForm: React.FC = () => {
 
                     return (
                       <tr key={screen.key} className="hover:bg-slate-50/50 transition">
-                        <td className="px-4 py-3">
-                          <p className="font-semibold text-slate-900 text-sm">{screen.label}</p>
+                        <td className="px-3 py-1.5">
+                          <p className="font-semibold text-slate-900 text-xs">{screen.label}</p>
                           <p className="text-[11px] text-slate-500">{screen.desc}</p>
                         </td>
 
                         {/* View */}
-                        <td className="px-3 py-3 text-center">
+                        <td className="px-3 py-1.5 text-center">
                           <input
                             type="checkbox"
                             checked={currentPerm.view}
                             onChange={() => handlePermissionToggle(screen.key, 'view')}
-                            className="w-4 h-4 text-indigo-600 rounded border-slate-300 focus:ring-indigo-500 cursor-pointer"
+                            className="w-3.5 h-3.5 text-indigo-600 rounded border-slate-300 focus:ring-indigo-500 cursor-pointer"
                           />
                         </td>
 
                         {/* Create */}
-                        <td className="px-3 py-3 text-center">
+                        <td className="px-3 py-1.5 text-center">
                           <input
                             type="checkbox"
                             checked={currentPerm.create}
                             onChange={() => handlePermissionToggle(screen.key, 'create')}
-                            className="w-4 h-4 text-emerald-600 rounded border-slate-300 focus:ring-emerald-500 cursor-pointer"
+                            className="w-3.5 h-3.5 text-emerald-600 rounded border-slate-300 focus:ring-emerald-500 cursor-pointer"
                           />
                         </td>
 
                         {/* Edit */}
-                        <td className="px-3 py-3 text-center">
+                        <td className="px-3 py-1.5 text-center">
                           <input
                             type="checkbox"
                             checked={currentPerm.edit}
                             onChange={() => handlePermissionToggle(screen.key, 'edit')}
-                            className="w-4 h-4 text-amber-600 rounded border-slate-300 focus:ring-amber-500 cursor-pointer"
+                            className="w-3.5 h-3.5 text-amber-600 rounded border-slate-300 focus:ring-amber-500 cursor-pointer"
                           />
                         </td>
 
                         {/* Delete */}
-                        <td className="px-3 py-3 text-center">
+                        <td className="px-3 py-1.5 text-center">
                           <input
                             type="checkbox"
                             checked={currentPerm.delete}
                             onChange={() => handlePermissionToggle(screen.key, 'delete')}
-                            className="w-4 h-4 text-rose-600 rounded border-slate-300 focus:ring-rose-500 cursor-pointer"
+                            className="w-3.5 h-3.5 text-rose-600 rounded border-slate-300 focus:ring-rose-500 cursor-pointer"
                           />
                         </td>
                       </tr>
@@ -477,20 +475,20 @@ export const UserForm: React.FC = () => {
         )}
 
         {/* Footer Actions */}
-        <div className="flex items-center justify-end gap-3 pt-2">
+        <div className="flex items-center justify-end gap-2.5 pt-1">
           <button
             type="button"
             onClick={() => navigate('/users')}
-            className="px-5 py-2.5 border border-slate-300 text-slate-700 rounded-xl text-sm font-semibold hover:bg-slate-50 transition"
+            className="ui-btn-secondary"
           >
             Cancel
           </button>
           <button
             type="submit"
             disabled={saving}
-            className="inline-flex items-center gap-2 px-6 py-2.5 bg-indigo-600 text-white rounded-xl text-sm font-semibold hover:bg-indigo-700 transition shadow-sm hover:shadow disabled:opacity-50"
+            className="ui-btn-primary"
           >
-            <Save className="w-4 h-4" />
+            <Save className="w-3.5 h-3.5" />
             {saving ? 'Saving...' : isEditMode ? 'Update Staff Account' : 'Create Staff Account'}
           </button>
         </div>

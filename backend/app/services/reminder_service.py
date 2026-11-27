@@ -31,12 +31,17 @@ async def check_and_send_1hr_reminders():
                     patient_name=appt["patient_name"],
                     doctor_name=appt["doctor_name"],
                     time_slot=appt["time_slot"],
-                    clinic_address=appt["clinic_address"]
+                    clinic_address=appt["clinic_address"] or "",
+                    custom_phone_number_id=appt.get("phone_number_id"),
+                    custom_access_token=appt.get("access_token"),
                 )
 
                 if success:
-                    await db.mark_reminder_sent(appt["id"])
-                    logger.info(f"Reminder marked as sent for appointment ID {appt['id']}")
+                    await db.mark_reminder_sent(
+                        appt["id"],
+                        tenant_schema=appt.get("tenant_schema", "public")
+                    )
+                    logger.info(f"Reminder marked as sent for appointment ID {appt['id']} (schema: {appt.get('tenant_schema', 'public')})")
             except Exception as e:
                 logger.error(f"Error sending reminder for appointment {appt.get('id')}: {e}")
 

@@ -107,6 +107,7 @@ class Doctor(Base):
     name: Mapped[str] = mapped_column(String(100), nullable=False)
     specialty: Mapped[str] = mapped_column(String(255), nullable=False)
     available_days: Mapped[str] = mapped_column(String(100), nullable=False)
+    leave_dates: Mapped[Optional[str]] = mapped_column(Text, nullable=True)  # Comma-separated YYYY-MM-DD
     morning_slots: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     evening_slots: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     slot_duration_minutes: Mapped[int] = mapped_column(Integer, default=30)
@@ -155,6 +156,7 @@ class Appointment(Base):
     appointment_datetime: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, index=True)
 
     status: Mapped[str] = mapped_column(String(25), default="CONFIRMED")  # CONFIRMED, COMPLETED, CANCELLED, RESCHEDULED
+    notes: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     reminder_sent: Mapped[bool] = mapped_column(Boolean, default=False, index=True)
     reminder_sent_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
 

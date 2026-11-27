@@ -49,8 +49,16 @@ const getLocalDateStr = (offsetDays = 0): string => {
   return `${yyyy}-${mm}-${dd}`;
 };
 
-const isDoctorWorkingDay = (availableDays: string | undefined, dateStr: string): boolean => {
+const isDoctorWorkingDay = (
+  availableDays: string | undefined,
+  dateStr: string,
+  leaveDates?: string | null
+): boolean => {
   if (!dateStr) return true;
+  if (leaveDates) {
+    const blocked = leaveDates.split(',').map((d) => d.trim()).filter(Boolean);
+    if (blocked.includes(dateStr)) return false;
+  }
   const daysStr = (availableDays || 'Mon,Tue,Wed,Thu,Fri,Sat').toLowerCase();
   const [y, m, d] = dateStr.split('-').map(Number);
   if (!y || !m || !d) return true;
@@ -120,7 +128,7 @@ export const AppointmentForm: React.FC = () => {
             doctor_id: appt.doctor_id || (docs.length > 0 ? docs[0].id : ''),
             time_slot: appt.time_slot,
             status: appt.status,
-            notes: '',
+            notes: appt.notes || '',
           });
         } else if (docs.length > 0) {
           // Select first active doctor by default
@@ -240,7 +248,7 @@ export const AppointmentForm: React.FC = () => {
     const result: { date: string; label: string }[] = [];
     for (let i = 0; i < 21 && result.length < 4; i++) {
       const dateStr = getLocalDateStr(i);
-      if (!isDoctorWorkingDay(selectedDoctor?.available_days, dateStr)) {
+      if (!isDoctorWorkingDay(selectedDoctor?.available_days, dateStr, selectedDoctor?.leave_dates)) {
         continue;
       }
       const [y, m, d] = dateStr.split('-').map(Number);
@@ -258,7 +266,8 @@ export const AppointmentForm: React.FC = () => {
 
   const isSelectedDateWorkingDay = isDoctorWorkingDay(
     selectedDoctor?.available_days,
-    formData.appointment_date
+    formData.appointment_date,
+    selectedDoctor?.leave_dates
   );
 
   if (loadingInitial) {

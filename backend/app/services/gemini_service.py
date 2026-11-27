@@ -95,12 +95,19 @@ class GeminiService:
             day_dt = now_local + timedelta(days=i)
             date_str = day_dt.strftime("%Y-%m-%d")
 
-            # Check doctor's configured working days
+            # Check doctor's configured working days & leave dates
             if target_doc:
-                if not is_doctor_working_on_date(target_doc.get("available_days"), date_str):
+                if not is_doctor_working_on_date(
+                    target_doc.get("available_days"),
+                    date_str,
+                    target_doc.get("leave_dates")
+                ):
                     continue
             elif active_doctors:
-                if not any(is_doctor_working_on_date(d.get("available_days"), date_str) for d in active_doctors):
+                if not any(
+                    is_doctor_working_on_date(d.get("available_days"), date_str, d.get("leave_dates"))
+                    for d in active_doctors
+                ):
                     continue
 
             # Check that at least 1 non-past, unbooked slot exists on this day
