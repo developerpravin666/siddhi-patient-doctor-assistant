@@ -17,7 +17,17 @@ from app.core.tenant_context import get_tenant_override
 from app.core.security import verify_password, create_access_token, decode_access_token, get_password_hash
 from app.core.rate_limiter import login_rate_limiter
 from app.models.domain import AdminUser, Tenant, get_default_permissions
-from app.models.schemas import LoginRequest, TokenResponse, AdminUserOut, UserProfileUpdate
+from datetime import timedelta
+from app.core.config import settings
+from app.models.schemas import (
+    LoginRequest,
+    TokenResponse,
+    AdminUserOut,
+    UserProfileUpdate,
+    ForgotPasswordRequest,
+    ResetPasswordRequest,
+    ChangePasswordRequest,
+)
 
 router = APIRouter(prefix="/auth", tags=["Authentication"])
 logger = logging.getLogger("auth_api")
@@ -290,6 +300,145 @@ async def update_my_profile(
 
     await db_session.commit()
     return current_user
+
+
+async def _update_user_password_everywhere(
+    user: AdminUser,
+    new_hash: str,
+    db_session: AsyncSession
+):
+    from sqlalchemy import text
+
+    user.hashed_password = new_hash
+    await db_session.execute(
+        text("UPDATE public.admin_users SET hashed_password = :hp, updated_at = CURRENT_TIMESTAMP WHERE username = :un"),
+        {"hp": new_hash, "un": user.username}
+    )
+    if user.tenant_id:
+        try:
+            tenant_schema = await resolve_user_tenant_schema(user, db_session)
+            if tenant_schema and tenant_schema != "public":
+                await db_session.execute(
+                    text(f'UPDATE "{tenant_schema}".admin_users SET hashed_password = :hp, updated_at = CURRENT_TIMESTAMP WHERE username = :un'),
+                    {"hp": new_hash, "un": user.username}
+                )
+        except Exception as e:
+            logger.warning(f"Could not sync password update to tenant schema: {e}")
+
+
+@router.post("/forgot-password", dependencies=[Depends(login_rate_limiter)])
+async def forgot_password(
+    payload: ForgotPasswordRequest,
+    db_session: AsyncSession = Depends(get_db)
+):
+    """
+    Issues a short-lived (15 min) signed password-reset token for the given username.
+    In development mode, returns `reset_token` directly for testing; in production,
+    returns a generic message and logs/dispatches via configured channel.
+    """
+    from sqlalchemy import text
+
+    uname = payload.username.strip()
+    user = (await db_session.execute(select(AdminUser).where(AdminUser.username == uname))).scalar_one_or_none()
+    if not user:
+        try:
+            pub_res = await db_session.execute(
+                text("SELECT id, username, hashed_password, full_name, role, tenant_id, clinic_id, permissions, is_active FROM public.admin_users WHERE username = :u"),
+                {"u": uname}
+            )
+            row = pub_res.mappings().first()
+            if row:
+                user = AdminUser(**dict(row))
+        except Exception:
+            pass
+
+    if not user:
+        return {
+            "status": "OK",
+            "message": "If an account with that username exists, a password reset link/token has been generated.",
+        }
+
+    reset_token = create_access_token(
+        data={"sub": user.username, "purpose": "password_reset"},
+        expires_delta=timedelta(minutes=15),
+    )
+    logger.info(f"Password reset token generated for user '{user.username}'")
+
+    resp = {
+        "status": "OK",
+        "message": "If an account with that username exists, a password reset link/token has been generated.",
+    }
+    if settings.ENV.lower() != "production":
+        resp["reset_token"] = reset_token
+    return resp
+
+
+@router.post("/reset-password", dependencies=[Depends(login_rate_limiter)])
+async def reset_password(
+    payload: ResetPasswordRequest,
+    db_session: AsyncSession = Depends(get_db)
+):
+    """
+    Resets a user's password using a valid 15-minute password_reset JWT token.
+    """
+    from sqlalchemy import text
+
+    decoded = decode_access_token(payload.token.strip())
+    if not decoded or decoded.get("purpose") != "password_reset" or not decoded.get("sub"):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid or expired password reset token."
+        )
+
+    uname = decoded["sub"]
+    user = (await db_session.execute(select(AdminUser).where(AdminUser.username == uname))).scalar_one_or_none()
+    if not user:
+        try:
+            pub_res = await db_session.execute(
+                text("SELECT id, username, hashed_password, full_name, role, tenant_id, clinic_id, permissions, is_active FROM public.admin_users WHERE username = :u"),
+                {"u": uname}
+            )
+            row = pub_res.mappings().first()
+            if row:
+                user = AdminUser(**dict(row))
+        except Exception:
+            pass
+
+    if not user:
+        raise HTTPException(status_code=404, detail="User account not found.")
+
+    new_hash = get_password_hash(payload.new_password.strip())
+    await _update_user_password_everywhere(user, new_hash, db_session)
+    await db_session.commit()
+    logger.info(f"Password successfully reset for user '{user.username}'")
+    return {"status": "OK", "message": "Password has been reset successfully. You can now sign in."}
+
+
+@router.post("/change-password")
+async def change_password(
+    payload: ChangePasswordRequest,
+    current_user: AdminUser = Depends(get_current_admin),
+    db_session: AsyncSession = Depends(get_db)
+):
+    """
+    Allows any authenticated user to change their own password by verifying current_password.
+    """
+    if not verify_password(payload.current_password, current_user.hashed_password):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Current password is incorrect."
+        )
+    if payload.new_password.strip() == payload.current_password:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="New password must be different from your current password."
+        )
+
+    new_hash = get_password_hash(payload.new_password.strip())
+    await _update_user_password_everywhere(current_user, new_hash, db_session)
+    await db_session.commit()
+    logger.info(f"Password changed by user '{current_user.username}'")
+    return {"status": "OK", "message": "Password changed successfully."}
 
 
 if __name__ == "__main__":

@@ -83,6 +83,21 @@ export const logoutApi = () => {
   localStorage.removeItem('siddhi_active_tenant_name');
 };
 
+export const forgotPasswordApi = async (username: string): Promise<{ status: string; message: string; reset_token?: string }> => {
+  const res = await api.post('/api/v1/auth/forgot-password', { username });
+  return res.data;
+};
+
+export const resetPasswordApi = async (token: string, new_password: string): Promise<{ status: string; message: string }> => {
+  const res = await api.post('/api/v1/auth/reset-password', { token, new_password });
+  return res.data;
+};
+
+export const changePasswordApi = async (current_password: string, new_password: string): Promise<{ status: string; message: string }> => {
+  const res = await api.post('/api/v1/auth/change-password', { current_password, new_password });
+  return res.data;
+};
+
 export const getActiveTenantId = (): string | null => {
   return localStorage.getItem('siddhi_active_tenant_id');
 };

@@ -3,6 +3,9 @@ import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { MainLayout } from './components/MainLayout';
 import { ProtectedRoute } from './components/ProtectedRoute';
 import { LoginView } from './components/LoginView';
+import { ForgotPasswordPage } from './pages/ForgotPasswordPage';
+import { ResetPasswordPage } from './pages/ResetPasswordPage';
+import { ChangePasswordPage } from './pages/ChangePasswordPage';
 import { Dashboard } from './pages/Dashboard';
 import { Appointments } from './pages/Appointments';
 import { WhatsAppSimulator } from './pages/WhatsAppSimulator';
@@ -50,8 +53,10 @@ export const App: React.FC = () => {
     <BrowserRouter>
       <ConfirmationProvider>
         <Routes>
-        {/* Public Authentication Route */}
+        {/* Public Authentication Routes */}
         <Route path="/login" element={<LoginView />} />
+        <Route path="/forgot-password" element={<ForgotPasswordPage />} />
+        <Route path="/reset-password" element={<ResetPasswordPage />} />
 
         {/* Authenticated Application Routes wrapped in MainLayout */}
         <Route
@@ -64,6 +69,7 @@ export const App: React.FC = () => {
         >
           {/* Default Root Redirect */}
           <Route index element={<RootRedirect />} />
+          <Route path="change-password" element={<ChangePasswordPage />} />
 
           {/* Core Routed Pages */}
           <Route

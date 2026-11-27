@@ -9,8 +9,10 @@ import {
   Building2, 
   ChevronDown, 
   Check, 
-  RotateCcw 
+  RotateCcw,
+  KeyRound
 } from 'lucide-react';
+import { Link } from 'react-router-dom';
 import { AdminUser, Tenant } from '../types';
 import { getTenants, getActiveTenantId, setActiveTenant } from '../api/client';
 
@@ -258,6 +260,18 @@ export const Navbar: React.FC<NavbarProps> = ({
               <p className="text-[10px] text-slate-400">@{currentUser.username}</p>
             </div>
           </div>
+        )}
+
+        {/* Change Password */}
+        {currentUser && (
+          <Link
+            to="/change-password"
+            title="Change Password"
+            className="p-2 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-xl transition flex items-center gap-1.5 text-xs font-semibold"
+          >
+            <KeyRound className="w-4 h-4" />
+            <span className="hidden xl:inline">Password</span>
+          </Link>
         )}
 
         {/* Logout / Switch Role */}
