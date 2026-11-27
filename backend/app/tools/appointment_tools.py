@@ -1,12 +1,32 @@
 from datetime import datetime, timedelta
 import logging
 from typing import Dict, Any, List, Optional
+import pytz
+from dateutil import parser as dateutil_parser
 from sqlalchemy import select, and_, text
 from app.core.database import AsyncSessionLocal, is_postgres
 from app.models.domain import Doctor, Appointment, Clinic
 from app.services.database_service import db
 
 logger = logging.getLogger("appointment_tools")
+
+
+def is_doctor_working_on_date(available_days_str: Optional[str], date_str: str) -> bool:
+    """
+    Checks if a doctor is scheduled to work on the weekday of `date_str` ('YYYY-MM-DD')
+    based on `available_days_str` (e.g. 'Mon,Tue,Wed,Thu,Fri,Sat', 'Monday - Saturday', 'Mon-Fri', 'Daily').
+    """
+    days_str = (available_days_str or "Mon,Tue,Wed,Thu,Fri,Sat").lower()
+    target_weekday = datetime.strptime(date_str, "%Y-%m-%d").strftime("%A").lower()
+    short_day = target_weekday[:3]
+
+    if "daily" in days_str or "all" in days_str or "everyday" in days_str:
+        return True
+    if "mon-sat" in days_str or "monday - saturday" in days_str or "monday to saturday" in days_str:
+        return target_weekday != "sunday"
+    if "mon-fri" in days_str or "monday - friday" in days_str or "monday to friday" in days_str:
+        return target_weekday not in ("saturday", "sunday")
+    return short_day in days_str or target_weekday in days_str
 
 
 def generate_slots_by_interval(start_hour: int, start_min: int, end_hour: int, end_min: int, interval_mins: int = 15) -> List[str]:
@@ -37,18 +57,37 @@ async def get_available_slots(
         doctor_id: Optional doctor ID to query specific schedule.
         tenant_schema: Isolated clinic tenant schema.
     """
-    now = datetime.now()
+    clinic_details = await db.get_clinic_details(tenant_schema=tenant_schema)
+    tz_name = clinic_details.get("timezone") or "Asia/Kolkata"
+    try:
+        local_tz = pytz.timezone(tz_name)
+    except Exception:
+        local_tz = pytz.timezone("Asia/Kolkata")
+
+    now_local = datetime.now(local_tz)
+    today_str = now_local.strftime("%Y-%m-%d")
+
     if not date or date.lower() in ("tomorrow", "tmrw"):
-        target_date = (now + timedelta(days=1)).strftime("%Y-%m-%d")
+        target_date = (now_local + timedelta(days=1)).strftime("%Y-%m-%d")
     elif date.lower() == "today":
-        target_date = now.strftime("%Y-%m-%d")
+        target_date = today_str
     else:
         try:
             target_date = datetime.strptime(date.strip(), "%Y-%m-%d").strftime("%Y-%m-%d")
         except Exception:
-            target_date = (now + timedelta(days=1)).strftime("%Y-%m-%d")
+            target_date = (now_local + timedelta(days=1)).strftime("%Y-%m-%d")
 
-    target_weekday = datetime.strptime(target_date, "%Y-%m-%d").strftime("%A").lower()
+    # Reject past dates immediately
+    if target_date < today_str:
+        return {
+            "status": "SUCCESS",
+            "date": target_date,
+            "doctor_id": doctor_id,
+            "doctor_name": None,
+            "doctor_specialty": None,
+            "available_slots": [],
+            "total_available": 0
+        }
 
     # 1. Fetch doctor(s) schedule dynamically from database
     configured_slots: List[str] = []
@@ -70,22 +109,11 @@ async def get_available_slots(
             doctors = res.scalars().all()
 
             for doc in doctors:
-                # Check doctor available days (e.g. "Monday, Wednesday, Friday" or "Mon-Sat")
-                days_str = (doc.available_days or "Monday - Saturday").lower()
-                is_available = False
-                if "daily" in days_str or "all" in days_str or "everyday" in days_str:
-                    is_available = True
-                elif "mon-sat" in days_str or "monday - saturday" in days_str or "monday to saturday" in days_str:
-                    is_available = target_weekday != "sunday"
-                elif "mon-fri" in days_str or "monday - friday" in days_str or "monday to friday" in days_str:
-                    is_available = target_weekday not in ("saturday", "sunday")
-                else:
-                    is_available = target_weekday[:3] in days_str or target_weekday in days_str
-
-                if not is_available and len(doctors) == 1:
-                    # Doctor explicitly not available on this day
-                    doctor_name = doc.name
-                    doctor_specialty = doc.specialty
+                if not is_doctor_working_on_date(doc.available_days, target_date):
+                    if len(doctors) == 1:
+                        # Doctor explicitly not available on this day
+                        doctor_name = doc.name
+                        doctor_specialty = doc.specialty
                     continue
 
                 doctor_available_today = True
@@ -129,6 +157,19 @@ async def get_available_slots(
 
     # 3. Filter out already booked slots
     open_slots = [slot for slot in unique_slots if slot not in booked_slots]
+
+    # 4. If target_date is today, filter out slots whose start time has already passed
+    if target_date == today_str:
+        future_slots = []
+        for slot in open_slots:
+            try:
+                dt_naive = dateutil_parser.parse(f"{target_date} {slot}")
+                dt_local = local_tz.localize(dt_naive)
+                if dt_local > now_local:
+                    future_slots.append(slot)
+            except Exception:
+                future_slots.append(slot)
+        open_slots = future_slots
 
     logger.info(f"Dynamic database-driven slots for {target_date} (doctor: {doctor_id or 'all'}): {len(open_slots)} available")
 

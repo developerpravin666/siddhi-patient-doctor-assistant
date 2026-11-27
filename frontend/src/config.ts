@@ -18,7 +18,7 @@
  * automatically read from here.
  */
 
-export const DEFAULT_API_URL = 'https://processing-emissions-drew-needle.trycloudflare.com'; // || 'http://localhost:8000';
+export const DEFAULT_API_URL = 'https://camping-bids-objects-produce.trycloudflare.com'; // || 'http://localhost:8000';
 
 export function getApiBaseUrl(): string {
   // 1. Runtime override check (from browser localStorage or window global)

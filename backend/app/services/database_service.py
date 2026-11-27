@@ -354,11 +354,68 @@ class DatabaseService:
                     "clinic_address": appt.clinic_address,
                     "appointment_date": appt.appointment_date,
                     "time_slot": appt.time_slot,
-                    "appointment_datetime": appt.appointment_datetime,
+                    "appointment_datetime": appt.appointment_datetime.isoformat() if hasattr(appt.appointment_datetime, "isoformat") else str(appt.appointment_datetime),
                     "status": appt.status
                 }
             except Exception as e:
                 logger.warning(f"Error fetching active appointment for {phone_number} in schema '{safe_schema}': {e}")
+                return None
+
+    @staticmethod
+    async def get_active_appointment_by_query(query: str, tenant_schema: str = "public") -> Optional[Dict[str, Any]]:
+        """
+        Looks up an upcoming confirmed appointment by either:
+        - 10-digit mobile number, or
+        - Booking ID prefix / full ID (e.g. '081AB9A6')
+        """
+        safe_schema = await DatabaseService.resolve_schema(tenant_schema)
+        clean = (query or "").strip().replace("#", "").strip()
+        if not clean:
+            return None
+
+        today_str = datetime.now().strftime("%Y-%m-%d")
+        digits = "".join(filter(str.isdigit, clean))
+        is_phone = len(digits) >= 7
+
+        async with AsyncSessionLocal() as session:
+            try:
+                if is_postgres():
+                    await session.execute(text(f'SET search_path TO "{safe_schema}", public;'))
+
+                if is_phone:
+                    last10 = digits[-10:] if len(digits) >= 10 else digits
+                    condition = Appointment.mobile_number.like(f"%{last10}")
+                else:
+                    condition = Appointment.id.ilike(f"{clean}%")
+
+                stmt = select(Appointment).where(
+                    and_(
+                        Appointment.status == "CONFIRMED",
+                        condition,
+                        Appointment.appointment_date >= today_str
+                    )
+                ).order_by(Appointment.appointment_datetime.asc()).limit(1)
+
+                res = await session.execute(stmt)
+                appt = res.scalar_one_or_none()
+                if not appt:
+                    return None
+
+                return {
+                    "id": appt.id,
+                    "patient_name": appt.patient_name,
+                    "mobile_number": appt.mobile_number,
+                    "doctor_id": appt.doctor_id,
+                    "doctor_name": appt.doctor_name,
+                    "clinic_name": appt.clinic_name,
+                    "clinic_address": appt.clinic_address,
+                    "appointment_date": appt.appointment_date,
+                    "time_slot": appt.time_slot,
+                    "appointment_datetime": appt.appointment_datetime.isoformat() if hasattr(appt.appointment_datetime, "isoformat") else str(appt.appointment_datetime),
+                    "status": appt.status
+                }
+            except Exception as e:
+                logger.warning(f"Error querying active appointment for '{query}': {e}")
                 return None
 
     @staticmethod

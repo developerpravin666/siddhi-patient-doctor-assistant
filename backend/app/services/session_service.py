@@ -80,7 +80,7 @@ class SessionService:
         """
         key = f"session:{phone_number}"
         data["last_interaction"] = int(time.time())
-        serialized = json.dumps(data)
+        serialized = json.dumps(data, default=str)
 
         redis_client = await self._get_redis()
         if redis_client:

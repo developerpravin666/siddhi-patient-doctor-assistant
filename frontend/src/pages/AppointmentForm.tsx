@@ -39,6 +39,36 @@ const appointmentSchema = z.object({
 
 type AppointmentFormData = z.infer<typeof appointmentSchema>;
 
+const getLocalDateStr = (offsetDays = 0): string => {
+  const dt = new Date();
+  dt.setDate(dt.getDate() + offsetDays);
+  const yyyy = dt.getFullYear();
+  const mm = String(dt.getMonth() + 1).padStart(2, '0');
+  const dd = String(dt.getDate()).padStart(2, '0');
+  return `${yyyy}-${mm}-${dd}`;
+};
+
+const isDoctorWorkingDay = (availableDays: string | undefined, dateStr: string): boolean => {
+  if (!dateStr) return true;
+  const daysStr = (availableDays || 'Mon,Tue,Wed,Thu,Fri,Sat').toLowerCase();
+  const [y, m, d] = dateStr.split('-').map(Number);
+  if (!y || !m || !d) return true;
+  const dt = new Date(y, m - 1, d);
+  const fullDay = dt.toLocaleDateString('en-US', { weekday: 'long' }).toLowerCase();
+  const shortDay = fullDay.slice(0, 3);
+
+  if (daysStr.includes('daily') || daysStr.includes('all') || daysStr.includes('everyday')) {
+    return true;
+  }
+  if (daysStr.includes('mon-sat') || daysStr.includes('monday - saturday') || daysStr.includes('monday to saturday')) {
+    return fullDay !== 'sunday';
+  }
+  if (daysStr.includes('mon-fri') || daysStr.includes('monday - friday') || daysStr.includes('monday to friday')) {
+    return fullDay !== 'saturday' && fullDay !== 'sunday';
+  }
+  return daysStr.includes(shortDay) || daysStr.includes(fullDay);
+};
+
 export const AppointmentForm: React.FC = () => {
   const { id } = useParams<{ id: string }>();
   const isEditMode = Boolean(id);
@@ -54,14 +84,14 @@ export const AppointmentForm: React.FC = () => {
   const [errorMessage, setErrorMessage] = useState('');
   const [formErrors, setFormErrors] = useState<Record<string, string>>({});
 
-  // Default target date: tomorrow
-  const tomorrowStr = new Date(Date.now() + 86400000).toISOString().split('T')[0];
+  // Default target date: today (local)
+  const todayStr = getLocalDateStr(0);
 
   // Form states
   const [formData, setFormData] = useState<AppointmentFormData>({
     patient_name: '',
     mobile_number: '',
-    appointment_date: tomorrowStr,
+    appointment_date: todayStr,
     doctor_id: '',
     time_slot: '',
     status: 'CONFIRMED',
@@ -203,6 +233,32 @@ export const AppointmentForm: React.FC = () => {
   const eveningSlots = availableSlots.filter((s) => s.includes('PM'));
 
   const selectedDoctor = doctors.find((d) => d.id === formData.doctor_id);
+
+  // Compute next 4 working days for the selected doctor (including Today if doctor works today)
+  const upcomingWorkingDays = React.useMemo(() => {
+    const result: { date: string; label: string }[] = [];
+    for (let i = 0; i < 21 && result.length < 4; i++) {
+      const dateStr = getLocalDateStr(i);
+      if (!isDoctorWorkingDay(selectedDoctor?.available_days, dateStr)) {
+        continue;
+      }
+      const [y, m, d] = dateStr.split('-').map(Number);
+      const dt = new Date(y, m - 1, d);
+      const dayLabel =
+        i === 0
+          ? 'Today'
+          : i === 1
+          ? 'Tomorrow'
+          : dt.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
+      result.push({ date: dateStr, label: dayLabel });
+    }
+    return result;
+  }, [selectedDoctor]);
+
+  const isSelectedDateWorkingDay = isDoctorWorkingDay(
+    selectedDoctor?.available_days,
+    formData.appointment_date
+  );
 
   if (loadingInitial) {
     return (
@@ -383,6 +439,7 @@ export const AppointmentForm: React.FC = () => {
                 <Calendar className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
                 <input
                   type="date"
+                  min={todayStr}
                   value={formData.appointment_date}
                   onChange={(e) => setFormData({ ...formData, appointment_date: e.target.value, time_slot: '' })}
                   className={`w-full pl-10 pr-4 py-2.5 rounded-xl border ${
@@ -393,21 +450,34 @@ export const AppointmentForm: React.FC = () => {
               {formErrors.appointment_date && (
                 <p className="text-xs text-rose-600 mt-1 font-medium">{formErrors.appointment_date}</p>
               )}
-              <div className="flex items-center gap-2 mt-2">
-                <button
-                  type="button"
-                  onClick={() => setFormData({ ...formData, appointment_date: new Date().toISOString().split('T')[0], time_slot: '' })}
-                  className="px-2.5 py-1 text-xs font-semibold bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg transition"
-                >
-                  Today
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setFormData({ ...formData, appointment_date: tomorrowStr, time_slot: '' })}
-                  className="px-2.5 py-1 text-xs font-semibold bg-indigo-50 hover:bg-indigo-100 text-indigo-700 rounded-lg transition"
-                >
-                  Tomorrow
-                </button>
+              {selectedDoctor && (
+                <p className="text-[11px] text-slate-500 mt-1.5">
+                  Doctor working days: <span className="font-semibold text-slate-700">{selectedDoctor.available_days || 'Mon,Tue,Wed,Thu,Fri,Sat'}</span>
+                </p>
+              )}
+              {!isSelectedDateWorkingDay && formData.appointment_date && (
+                <p className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-2.5 py-1.5 mt-1.5 font-medium">
+                  {selectedDoctor?.name || 'Selected doctor'} is not scheduled to consult on this day. Please choose one of their working days below.
+                </p>
+              )}
+              <div className="flex flex-wrap items-center gap-2 mt-2">
+                {upcomingWorkingDays.map((d) => {
+                  const isActive = formData.appointment_date === d.date;
+                  return (
+                    <button
+                      key={d.date}
+                      type="button"
+                      onClick={() => setFormData({ ...formData, appointment_date: d.date, time_slot: '' })}
+                      className={`px-2.5 py-1 text-xs font-semibold rounded-lg transition border ${
+                        isActive
+                          ? 'bg-indigo-600 text-white border-indigo-600'
+                          : 'bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border-indigo-200'
+                      }`}
+                    >
+                      {d.label}
+                    </button>
+                  );
+                })}
               </div>
             </div>
           </div>

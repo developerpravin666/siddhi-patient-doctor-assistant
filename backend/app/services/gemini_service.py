@@ -1,6 +1,7 @@
 import logging
 import json
-from typing import List, Dict, Any, Tuple
+from typing import List, Dict, Any, Tuple, Optional
+import pytz
 from google import genai
 from google.genai import types
 from app.core.config import settings
@@ -9,7 +10,8 @@ from app.tools.appointment_tools import (
     get_available_slots,
     book_appointment,
     reschedule_appointment,
-    cancel_appointment
+    cancel_appointment,
+    is_doctor_working_on_date
 )
 from app.services.database_service import db
 
@@ -59,6 +61,72 @@ class GeminiService:
             except Exception as e:
                 logger.error(f"Failed to initialize Google GenAI Client: {e}")
         return self._client
+
+    async def _get_upcoming_working_dates(
+        self,
+        doctor_id: Optional[str],
+        target_schema: str,
+        max_options: int = 4,
+        lookahead_days: int = 21
+    ) -> List[Dict[str, str]]:
+        """
+        Returns up to `max_options` upcoming dates (starting from Today) that are:
+        1. Configured working days for the selected doctor (or any active doctor if doctor_id is None).
+        2. Have at least 1 open, non-past consultation slot remaining.
+        """
+        from datetime import datetime, timedelta
+
+        clinic_details = await db.get_clinic_details(tenant_schema=target_schema)
+        tz_name = clinic_details.get("timezone") or "Asia/Kolkata"
+        try:
+            local_tz = pytz.timezone(tz_name)
+        except Exception:
+            local_tz = pytz.timezone("Asia/Kolkata")
+
+        now_local = datetime.now(local_tz)
+        active_doctors = await db.get_active_doctors(tenant_schema=target_schema)
+
+        target_doc = None
+        if doctor_id:
+            target_doc = next((d for d in active_doctors if d["id"] == doctor_id), None)
+
+        offered_dates: List[Dict[str, str]] = []
+        for i in range(0, lookahead_days):
+            day_dt = now_local + timedelta(days=i)
+            date_str = day_dt.strftime("%Y-%m-%d")
+
+            # Check doctor's configured working days
+            if target_doc:
+                if not is_doctor_working_on_date(target_doc.get("available_days"), date_str):
+                    continue
+            elif active_doctors:
+                if not any(is_doctor_working_on_date(d.get("available_days"), date_str) for d in active_doctors):
+                    continue
+
+            # Check that at least 1 non-past, unbooked slot exists on this day
+            slots_res = await get_available_slots(
+                date=date_str,
+                doctor_id=doctor_id,
+                tenant_schema=target_schema
+            )
+            if not slots_res.get("available_slots"):
+                continue
+
+            if i == 0:
+                day_label = "Today"
+            elif i == 1:
+                day_label = "Tomorrow"
+            else:
+                day_label = day_dt.strftime("%A")
+
+            offered_dates.append({
+                "date": date_str,
+                "label": f"{day_label} ({day_dt.strftime('%b %d, %Y')})"
+            })
+            if len(offered_dates) >= max_options:
+                break
+
+        return offered_dates
 
     async def run_turn(
         self,
@@ -142,7 +210,7 @@ class GeminiService:
                 session["sender_phone"] = sender_phone
 
         # 3b. Global Direct "Reschedule" Trigger
-        if any(k in msg_lower for k in ["reschedule appointment", "reschedule", "change slot", "change time", "change date"]):
+        if any(k in msg_lower for k in ["reschedule appointment", "reschedule", "rescheduling", "change slot", "change time", "change date"]):
             if active_appt:
                 session["workflow_state"] = "SELECT_DATE"
                 session["is_rescheduling"] = True
@@ -152,14 +220,10 @@ class GeminiService:
                 session["patient_name"] = active_appt["patient_name"]
                 session["mobile_number"] = active_appt["mobile_number"]
 
-                now = datetime.now()
-                offered_dates = []
-                for i in range(1, 5):
-                    day_dt = now + timedelta(days=i)
-                    offered_dates.append({
-                        "date": day_dt.strftime("%Y-%m-%d"),
-                        "label": "Tomorrow" if i == 1 else day_dt.strftime("%A") + f" ({day_dt.strftime('%b %d, %Y')})"
-                    })
+                offered_dates = await self._get_upcoming_working_dates(
+                    doctor_id=active_appt["doctor_id"],
+                    target_schema=target_schema
+                )
                 session["offered_dates"] = offered_dates
 
                 emoji_nums = ["1️⃣", "2️⃣", "3️⃣", "4️⃣"]
@@ -172,9 +236,18 @@ class GeminiService:
                     f"_Reply with 1, 2, 3, 4, or enter a date (YYYY-MM-DD)._"
                 )
                 return reply, executed_tools, session
+            else:
+                session["workflow_state"] = "LOOKUP_APPOINTMENT"
+                session["lookup_intent"] = "RESCHEDULE"
+                reply = (
+                    "🔄 *Reschedule Appointment*\n\n"
+                    "We could not find an upcoming appointment automatically for this WhatsApp number.\n\n"
+                    "Please enter your *10-digit registered mobile number* or *Booking ID* (e.g., 081AB9A6):"
+                )
+                return reply, executed_tools, session
 
         # 3c. Global Direct "Cancel" Trigger
-        if any(k in msg_lower for k in ["cancel appointment", "cancel booking", "cancel my appointment"]):
+        if any(k in msg_lower for k in ["cancel appointment", "cancel booking", "cancel my appointment", "cancelling", "cancel"]):
             if active_appt:
                 session["workflow_state"] = "CONFIRM_CANCEL"
                 session["cancel_appt_id"] = active_appt["id"]
@@ -186,6 +259,15 @@ class GeminiService:
                     "1️⃣ *Yes, cancel appointment*\n"
                     "2️⃣ *No, keep appointment*\n\n"
                     "_Please reply with 1 or 2._"
+                )
+                return reply, executed_tools, session
+            else:
+                session["workflow_state"] = "LOOKUP_APPOINTMENT"
+                session["lookup_intent"] = "CANCEL"
+                reply = (
+                    "⚠️ *Cancel Appointment*\n\n"
+                    "We could not find an upcoming appointment automatically for this WhatsApp number.\n\n"
+                    "Please enter your *10-digit registered mobile number* or *Booking ID* (e.g., 081AB9A6):"
                 )
                 return reply, executed_tools, session
 
@@ -226,7 +308,7 @@ class GeminiService:
                     appt_date_str = active_appt["appointment_date"]
 
                 # 1. Option 1: Reschedule
-                if msg_lower in ("1", "one", "reschedule", "reschedule appointment", "change slot", "change time", "change date"):
+                if msg_lower in ("1", "one", "reschedule", "reschedule appointment", "rescheduling", "change slot", "change time", "change date"):
                     session["workflow_state"] = "SELECT_DATE"
                     session["is_rescheduling"] = True
                     session["reschedule_appt_id"] = active_appt["id"]
@@ -235,14 +317,10 @@ class GeminiService:
                     session["patient_name"] = active_appt["patient_name"]
                     session["mobile_number"] = active_appt["mobile_number"]
 
-                    now = datetime.now()
-                    offered_dates = []
-                    for i in range(1, 5):
-                        day_dt = now + timedelta(days=i)
-                        offered_dates.append({
-                            "date": day_dt.strftime("%Y-%m-%d"),
-                            "label": "Tomorrow" if i == 1 else day_dt.strftime("%A") + f" ({day_dt.strftime('%b %d, %Y')})"
-                        })
+                    offered_dates = await self._get_upcoming_working_dates(
+                        doctor_id=active_appt["doctor_id"],
+                        target_schema=target_schema
+                    )
                     session["offered_dates"] = offered_dates
 
                     emoji_nums = ["1️⃣", "2️⃣", "3️⃣", "4️⃣"]
@@ -257,7 +335,7 @@ class GeminiService:
                     return reply, executed_tools, session
 
                 # 2. Option 2: Cancel
-                if msg_lower in ("2", "two", "cancel", "cancel appointment"):
+                if msg_lower in ("2", "two", "cancel", "cancel appointment", "cancelling"):
                     session["workflow_state"] = "CONFIRM_CANCEL"
                     session["cancel_appt_id"] = active_appt["id"]
                     session["cancel_appt_info"] = active_appt
@@ -271,7 +349,7 @@ class GeminiService:
                     return reply, executed_tools, session
 
                 # 3. Option 3: Book Another Appointment
-                if msg_lower in ("3", "three", "book", "new booking", "book another", "book another appointment"):
+                if msg_lower in ("3", "three", "book", "new booking", "book another", "book another appointment", "scheduling", "schedule"):
                     session["is_rescheduling"] = False
                     if len(active_doctors) > 1:
                         session["workflow_state"] = "DOCTOR_SELECTION"
@@ -340,13 +418,25 @@ class GeminiService:
                 return reply, executed_tools, session
 
             else:
-                # No Active Appointment: Standard 3-Option Welcome Menu
-                booking_intent = (
-                    msg_lower in ("1", "one", "book", "appointment", "schedule", "book appointment", "new booking")
-                    or any(k in msg_lower for k in ["want to book", "need appointment", "consult doctor", "see doctor"])
+                # No Active Appointment: Standard 4-Option Welcome Menu
+                is_scheduling_intent = (
+                    msg_lower in ("1", "one", "book", "appointment", "schedule", "scheduling", "book appointment", "new booking", "booking")
+                    or any(k in msg_lower for k in ["want to book", "need appointment", "consult doctor", "see doctor", "schedule appointment", "scheduling appointment", "book slot", "book a slot"])
+                )
+                is_manage_intent = (
+                    msg_lower in ("2", "two", "reschedule", "rescheduling", "cancel", "cancelling", "modify", "change appointment", "manage")
+                    or any(k in msg_lower for k in ["cancel appointment", "reschedule appointment", "cancel booking", "change slot", "modify appointment", "find appointment"])
+                )
+                is_timings_intent = (
+                    msg_lower in ("3", "three", "timings", "location", "address", "hours")
+                    or any(k in msg_lower for k in ["where are you", "clinic timing", "clinic hour", "clinic location"])
+                )
+                is_staff_intent = (
+                    msg_lower in ("4", "four", "staff", "receptionist", "speak", "human", "talk")
+                    or any(k in msg_lower for k in ["speak to doctor", "talk to doctor", "speak to staff"])
                 )
 
-                if booking_intent:
+                if is_scheduling_intent:
                     session["is_rescheduling"] = False
                     if len(active_doctors) > 1:
                         session["workflow_state"] = "DOCTOR_SELECTION"
@@ -384,7 +474,16 @@ class GeminiService:
                         )
                         return reply, executed_tools, session
 
-                if msg_lower in ("2", "two", "timings", "location", "address"):
+                if is_manage_intent:
+                    session["workflow_state"] = "LOOKUP_APPOINTMENT"
+                    session["lookup_intent"] = "GENERAL"
+                    reply = (
+                        "🔍 *Find Your Appointment*\n\n"
+                        "Please enter your *10-digit registered mobile number* or *Booking ID* (e.g., 081AB9A6) to manage your appointment:"
+                    )
+                    return reply, executed_tools, session
+
+                if is_timings_intent:
                     reply = (
                         f"📍 *Clinic Address:* {clinic_address}\n"
                         f"🕒 *Consultation Hours:* {clinic_hours}\n"
@@ -393,7 +492,7 @@ class GeminiService:
                     )
                     return reply, executed_tools, session
 
-                if msg_lower in ("3", "three", "staff", "receptionist", "speak"):
+                if is_staff_intent:
                     reply = (
                         "Our reception staff will assist you shortly. "
                         f"You can also reach us directly at *{clinic_phone}*.\n\n"
@@ -406,8 +505,196 @@ class GeminiService:
                     f"{welcome_header}\n\n"
                     "How can we assist you today?\n"
                     "1️⃣ *Book Appointment*\n"
-                    "2️⃣ *Clinic Timings & Location*\n"
-                    "3️⃣ *Speak with Front Desk Staff*\n\n"
+                    "2️⃣ *Reschedule or Cancel Existing Appointment*\n"
+                    "3️⃣ *Clinic Timings & Location*\n"
+                    "4️⃣ *Speak with Front Desk Staff*\n\n"
+                    "_Please reply with 1, 2, 3, or 4._"
+                )
+                return reply, executed_tools, session
+
+        # ---------------------------------------------------------------------
+        # STATE: LOOKUP_APPOINTMENT
+        # ---------------------------------------------------------------------
+        if state == "LOOKUP_APPOINTMENT":
+            if msg_lower in ("menu", "back", "home"):
+                session.clear()
+                session["workflow_state"] = "WELCOME_MENU"
+                session["tenant_schema"] = target_schema
+                welcome_header = custom_welcome or f"Hello! 👋 Welcome to *{clinic_name}*."
+                reply = (
+                    f"{welcome_header}\n\n"
+                    "How can we assist you today?\n"
+                    "1️⃣ *Book Appointment*\n"
+                    "2️⃣ *Reschedule or Cancel Existing Appointment*\n"
+                    "3️⃣ *Clinic Timings & Location*\n"
+                    "4️⃣ *Speak with Front Desk Staff*\n\n"
+                    "_Please reply with 1, 2, 3, or 4._"
+                )
+                return reply, executed_tools, session
+
+            if msg_lower in ("1", "one", "book", "schedule", "new", "booking", "book appointment", "scheduling"):
+                session.clear()
+                session["tenant_schema"] = target_schema
+                session["is_rescheduling"] = False
+                if len(active_doctors) > 1:
+                    session["workflow_state"] = "DOCTOR_SELECTION"
+                    session["offered_doctors"] = active_doctors
+                    emoji_nums = ["1️⃣", "2️⃣", "3️⃣", "4️⃣", "5️⃣", "6️⃣", "7️⃣", "8️⃣"]
+                    doc_options = "\n".join([
+                        f"{emoji_nums[i] if i < len(emoji_nums) else f'({i+1})'} *{d['name']}* — _{d['specialty']}_"
+                        for i, d in enumerate(active_doctors)
+                    ])
+                    reply = (
+                        "🩺 *Please select a Doctor for your consultation:*\n\n"
+                        f"{doc_options}\n\n"
+                        "_Please reply with the doctor's number or name._"
+                    )
+                    return reply, executed_tools, session
+                else:
+                    doc = active_doctors[0] if active_doctors else None
+                    doc_name = doc["name"] if doc else primary_doctor_name
+                    doc_spec = doc["specialty"] if doc else primary_doctor_specialty
+                    session["doctor_id"] = doc["id"] if doc else None
+                    session["doctor_name"] = doc_name
+                    session["doctor_specialty"] = doc_spec
+                    session["workflow_state"] = "COLLECT_NAME"
+                    reply = (
+                        f"You are booking an appointment with *{doc_name}* ({doc_spec}).\n\n"
+                        "May I please have the patient's *Full Name*?"
+                    )
+                    return reply, executed_tools, session
+
+            found = await db.get_active_appointment_by_query(msg_clean, tenant_schema=target_schema)
+            if not found:
+                reply = (
+                    f"❌ No active confirmed appointment was found matching *\"{msg_clean}\"*.\n\n"
+                    "• Please check and re-enter your *10-digit mobile number* or *Booking ID*\n"
+                    "• Or reply *1* to book a new appointment\n"
+                    "• Or reply *'Menu'* to return to the main menu"
+                )
+                return reply, executed_tools, session
+
+            intent = session.get("lookup_intent", "GENERAL")
+            short_id = found["id"][:8].upper()
+
+            if intent == "RESCHEDULE":
+                session["workflow_state"] = "SELECT_DATE"
+                session["is_rescheduling"] = True
+                session["reschedule_appt_id"] = found["id"]
+                session["doctor_id"] = found.get("doctor_id")
+                session["doctor_name"] = found.get("doctor_name", primary_doctor_name)
+                session["patient_name"] = found.get("patient_name")
+                session["mobile_number"] = found.get("mobile_number")
+
+                offered_dates = await self._get_upcoming_working_dates(
+                    doctor_id=active_appt["doctor_id"],
+                    target_schema=target_schema
+                )
+                session["offered_dates"] = offered_dates
+                emoji_nums = ["1️⃣", "2️⃣", "3️⃣", "4️⃣"]
+                date_options = "\n".join([f"{emoji_nums[i]} *{d['label']}*" for i, d in enumerate(offered_dates)])
+                reply = (
+                    f"✅ *Found Appointment for {found['patient_name']}!*\n\n"
+                    f"• *Current Slot:* {found['appointment_date']} at {found['time_slot']}\n"
+                    f"• *Doctor:* {found['doctor_name']}\n"
+                    f"• *Booking ID:* #{short_id}\n\n"
+                    f"📅 *Please choose your new preferred date:*\n\n"
+                    f"{date_options}\n\n"
+                    f"_Reply with 1, 2, 3, 4, or enter a date (YYYY-MM-DD)._"
+                )
+                return reply, executed_tools, session
+
+            elif intent == "CANCEL":
+                session["workflow_state"] = "CONFIRM_CANCEL"
+                session["cancel_appt_id"] = found["id"]
+                session["cancel_appt_info"] = found
+                reply = (
+                    f"✅ *Found Appointment for {found['patient_name']}!*\n\n"
+                    f"Are you sure you want to cancel your consultation with *{found['doctor_name']}* on *{found['appointment_date']} at {found['time_slot']}* (Booking ID: *#{short_id}*)?\n\n"
+                    "1️⃣ *Yes, cancel appointment*\n"
+                    "2️⃣ *No, keep appointment*\n\n"
+                    "_Please reply with 1 or 2._"
+                )
+                return reply, executed_tools, session
+
+            else:
+                session["workflow_state"] = "MANAGE_FOUND_APPOINTMENT"
+                session["found_appt"] = found
+                reply = (
+                    f"📋 *Appointment Found!*\n\n"
+                    f"• *Patient:* {found['patient_name']}\n"
+                    f"• *Doctor:* {found['doctor_name']}\n"
+                    f"• *Date & Time:* {found['appointment_date']} at {found['time_slot']}\n"
+                    f"• *Booking ID:* #{short_id}\n\n"
+                    "What would you like to do?\n"
+                    "1️⃣ *Reschedule to a new date/time*\n"
+                    "2️⃣ *Cancel this appointment*\n"
+                    "3️⃣ *Keep appointment & return to main menu*\n\n"
+                    "_Please reply with 1, 2, or 3._"
+                )
+                return reply, executed_tools, session
+
+        # ---------------------------------------------------------------------
+        # STATE: MANAGE_FOUND_APPOINTMENT
+        # ---------------------------------------------------------------------
+        if state == "MANAGE_FOUND_APPOINTMENT":
+            found = session.get("found_appt") or {}
+            short_id = found.get("id", "")[:8].upper()
+
+            if msg_lower in ("1", "one", "reschedule", "change"):
+                session["workflow_state"] = "SELECT_DATE"
+                session["is_rescheduling"] = True
+                session["reschedule_appt_id"] = found.get("id")
+                session["doctor_id"] = found.get("doctor_id")
+                session["doctor_name"] = found.get("doctor_name", primary_doctor_name)
+                session["patient_name"] = found.get("patient_name")
+                session["mobile_number"] = found.get("mobile_number")
+
+                offered_dates = await self._get_upcoming_working_dates(
+                    doctor_id=active_appt["doctor_id"],
+                    target_schema=target_schema
+                )
+                session["offered_dates"] = offered_dates
+                emoji_nums = ["1️⃣", "2️⃣", "3️⃣", "4️⃣"]
+                date_options = "\n".join([f"{emoji_nums[i]} *{d['label']}*" for i, d in enumerate(offered_dates)])
+                reply = (
+                    f"🔄 *Rescheduling Appointment with {found.get('doctor_name')}:*\n\n"
+                    f"• *Current Slot:* {found.get('appointment_date')} at {found.get('time_slot')}\n\n"
+                    f"📅 *Please choose your new preferred date:*\n\n"
+                    f"{date_options}\n\n"
+                    f"_Reply with 1, 2, 3, 4, or enter a date (YYYY-MM-DD)._"
+                )
+                return reply, executed_tools, session
+
+            elif msg_lower in ("2", "two", "cancel"):
+                session["workflow_state"] = "CONFIRM_CANCEL"
+                session["cancel_appt_id"] = found.get("id")
+                session["cancel_appt_info"] = found
+                reply = (
+                    "⚠️ *Cancel Appointment Confirmation*\n\n"
+                    f"Are you sure you want to cancel your consultation with *{found.get('doctor_name')}* on *{found.get('appointment_date')} at {found.get('time_slot')}* (Booking ID: *#{short_id}*)?\n\n"
+                    "1️⃣ *Yes, cancel appointment*\n"
+                    "2️⃣ *No, keep appointment*\n\n"
+                    "_Please reply with 1 or 2._"
+                )
+                return reply, executed_tools, session
+
+            elif msg_lower in ("3", "three", "keep", "menu", "return"):
+                session.clear()
+                session["workflow_state"] = "WELCOME_MENU"
+                session["tenant_schema"] = target_schema
+                reply = (
+                    "👍 *Appointment Retained!*\n\n"
+                    f"Your appointment with *{found.get('doctor_name')}* on *{found.get('appointment_date')} at {found.get('time_slot')}* remains confirmed.\n\n"
+                    "Reply *'Hi'* anytime if you need anything else! 🌿"
+                )
+                return reply, executed_tools, session
+            else:
+                reply = (
+                    "⚠️ Please choose an option:\n\n"
+                    "1️⃣ *Reschedule to a new date/time*\n"
+                    "2️⃣ *Cancel this appointment*\n"
+                    "3️⃣ *Keep appointment & return to main menu*\n\n"
                     "_Please reply with 1, 2, or 3._"
                 )
                 return reply, executed_tools, session
@@ -550,18 +837,11 @@ class GeminiService:
 
             session["workflow_state"] = "SELECT_DATE"
 
-            # Prepare next 4 available appointment days
-            now = datetime.now()
-            offered_dates = []
-            for i in range(1, 5):
-                day_dt = now + timedelta(days=i)
-                date_str = day_dt.strftime("%Y-%m-%d")
-                label = "Tomorrow" if i == 1 else day_dt.strftime("%A")
-                formatted = day_dt.strftime("%b %d, %Y")
-                offered_dates.append({
-                    "date": date_str,
-                    "label": f"{label} ({formatted})"
-                })
+            # Prepare next 4 available working appointment days (including Today if slots remain)
+            offered_dates = await self._get_upcoming_working_dates(
+                doctor_id=session.get("doctor_id"),
+                target_schema=target_schema
+            )
 
             session["offered_dates"] = offered_dates
             doc_display = session.get("doctor_name", primary_doctor_name)

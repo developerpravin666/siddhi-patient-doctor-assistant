@@ -13,7 +13,9 @@ import {
   Check,
   ExternalLink,
   Radio,
-  Sparkles
+  Sparkles,
+  Eye,
+  EyeOff
 } from 'lucide-react';
 import { useOutletContext } from 'react-router-dom';
 import { WhatsAppConfig, Doctor, AdminUser, UserRole, AppContextType } from '../types';
@@ -43,6 +45,7 @@ export const WhatsAppConfigPage: React.FC<WhatsAppConfigProps> = (props) => {
   const [phoneNumberId, setPhoneNumberId] = useState('');
   const [businessAccountId, setBusinessAccountId] = useState('');
   const [accessToken, setAccessToken] = useState('');
+  const [showAccessToken, setShowAccessToken] = useState(false);
   const [verifyToken, setVerifyToken] = useState('siddhi_patient_assistant_verify_token_secure_2026');
 
   // Bot flow states
@@ -292,17 +295,28 @@ export const WhatsAppConfigPage: React.FC<WhatsAppConfigProps> = (props) => {
               {/* Permanent Access Token */}
               <div className="text-xs">
                 <label className="block font-bold text-slate-700 mb-1">Permanent System User Access Token *</label>
-                <input
-                  type="password"
-                  value={accessToken}
-                  onChange={(e) => setAccessToken(e.target.value)}
-                  placeholder="EAAG... (Meta System User Token with whatsapp_business_messaging)"
-                  disabled={!canEdit}
-                  className={`w-full px-3 py-2 rounded-xl border font-mono text-xs focus:outline-none focus:ring-2 ${formErrors.whatsapp_access_token
-                      ? 'border-rose-400 focus:ring-rose-500/20'
-                      : 'border-slate-200 focus:ring-brand-500/20'
-                    }`}
-                />
+                <div className="relative">
+                  <input
+                    type={showAccessToken ? 'text' : 'password'}
+                    value={accessToken}
+                    onChange={(e) => setAccessToken(e.target.value)}
+                    placeholder="EAAG... (Meta System User Token with whatsapp_business_messaging)"
+                    disabled={!canEdit}
+                    className={`w-full px-3 py-2 pr-10 rounded-xl border font-mono text-xs focus:outline-none focus:ring-2 ${formErrors.whatsapp_access_token
+                        ? 'border-rose-400 focus:ring-rose-500/20'
+                        : 'border-slate-200 focus:ring-brand-500/20'
+                      }`}
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowAccessToken((prev) => !prev)}
+                    aria-label={showAccessToken ? 'Hide access token' : 'Show access token'}
+                    title={showAccessToken ? 'Hide access token' : 'Show access token'}
+                    className="absolute inset-y-0 right-0 px-3 flex items-center text-slate-400 hover:text-slate-600 transition"
+                  >
+                    {showAccessToken ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                  </button>
+                </div>
                 {formErrors.whatsapp_access_token && (
                   <p className="text-[11px] text-rose-600 mt-1">{formErrors.whatsapp_access_token}</p>
                 )}
