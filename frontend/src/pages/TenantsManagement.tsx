@@ -127,7 +127,7 @@ export const TenantsManagement: React.FC<{ defaultMode?: 'server' | 'client' }> 
     },
     {
       key: 'schema_name',
-      header: 'PostgreSQL Schema',
+      header: 'Workspace ID',
       sortable: true,
       sortValue: (t: Tenant) => t.schema_name || '',
       searchValue: (t: Tenant) => t.schema_name || '',
@@ -220,23 +220,15 @@ export const TenantsManagement: React.FC<{ defaultMode?: 'server' | 'client' }> 
   ], [navigate, confirm]);
 
   return (
-    <div className="space-y-6">
-      {/* Shared DataTable */}
+    <div className="space-y-3.5">
       <DataTable<Tenant>
-        title={
-          <div className="flex items-center gap-2">
-            <span>Clinic Tenants (Schema-Per-Tenant)</span>
-            <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-purple-100 text-purple-800">
-              Super Admin
-            </span>
-          </div>
-        }
-        subtitle="Each clinic operates as an independent tenant with its own dedicated, isolated PostgreSQL schema."
+        title="Clinics"
+        subtitle="Manage registered clinics and account status"
         data={tenants}
         columns={columns}
         keyExtractor={(t) => t.id}
         loading={loading}
-        searchPlaceholder="Search by clinic name, doctor, or schema..."
+        searchPlaceholder="Search by clinic name, doctor, or workspace..."
         mode={gridMode}
         totalCount={totalCount}
         page={page}
@@ -248,10 +240,10 @@ export const TenantsManagement: React.FC<{ defaultMode?: 'server' | 'client' }> 
         actionButton={
           <button
             onClick={() => navigate('/tenants/new')}
-            className="px-4 py-2.5 rounded-xl bg-purple-600 hover:bg-purple-700 text-white font-bold text-sm transition shadow-sm flex items-center gap-2"
+            className="ui-btn-primary bg-purple-600 hover:bg-purple-700"
           >
-            <Plus className="w-4 h-4" />
-            <span>Onboard New Clinic Tenant</span>
+            <Plus className="w-3.5 h-3.5" />
+            <span>Add Clinic</span>
           </button>
         }
         emptyMessage="No clinic tenants found."

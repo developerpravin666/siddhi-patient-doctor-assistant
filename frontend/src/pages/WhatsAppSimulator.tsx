@@ -426,7 +426,7 @@ export const WhatsAppSimulator: React.FC = () => {
         <div className="bg-white rounded-2xl p-5 border border-slate-200/80 shadow-sm space-y-3">
           <div className="flex items-center justify-between border-b border-slate-100 pb-2">
             <h4 className="font-bold text-slate-800 text-xs uppercase tracking-wider">
-              Redis Session State (30m TTL)
+              Session State
             </h4>
             <span className="text-[10px] text-slate-400 font-mono">session:{phoneNumber}</span>
           </div>

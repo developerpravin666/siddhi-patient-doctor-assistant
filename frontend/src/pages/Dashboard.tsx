@@ -87,22 +87,22 @@ export const Dashboard: React.FC<DashboardProps> = (props) => {
             <Sparkles className="w-3.5 h-3.5 text-emerald-200" />
             Meta WhatsApp Receptionist Online
           </div>
-          <h2 className="text-2xl font-bold tracking-tight">AI Receptionist Live Control Panel</h2>
-          <p className="text-brand-100 text-sm max-w-xl mt-1">
-            Automating multi-tenant clinic bookings via Gemini Function Calling, WhatsApp Cloud Webhook, and 1-hour automated reminders.
+          <h2 className="text-xl font-bold tracking-tight">Clinic Overview</h2>
+          <p className="text-brand-100 text-xs max-w-xl mt-0.5">
+            Today's appointments, patient activity, and booking summary.
           </p>
         </div>
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-2.5">
           <button
             onClick={() => handleNavigate('/simulator')}
-            className="px-4 py-2.5 rounded-xl bg-white text-brand-700 font-bold text-sm hover:bg-brand-50 transition shadow-md flex items-center gap-2"
+            className="px-3.5 py-2 rounded-lg bg-white text-brand-700 font-semibold text-xs hover:bg-brand-50 transition shadow-sm flex items-center gap-1.5"
           >
-            <MessageSquare className="w-4 h-4 text-brand-600" /> Test WhatsApp Simulator
+            <MessageSquare className="w-3.5 h-3.5 text-brand-600" /> WhatsApp Test
           </button>
           <button
             onClick={handleRefresh}
             disabled={loading}
-            className="px-3.5 py-2.5 rounded-xl bg-brand-800/60 text-white font-medium text-sm hover:bg-brand-800 transition flex items-center gap-1.5 disabled:opacity-50"
+            className="px-3 py-2 rounded-lg bg-brand-800/60 text-white font-medium text-xs hover:bg-brand-800 transition flex items-center gap-1.5 disabled:opacity-50"
           >
             <RefreshCw className={`w-3.5 h-3.5 ${loading ? 'animate-spin' : ''}`} />
             Refresh

@@ -307,26 +307,23 @@ export const SpecializationsManagement: React.FC<{ defaultMode?: 'server' | 'cli
   ];
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-3.5">
       {/* Header Banner */}
-      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
         <div>
-          <div className="flex items-center gap-2 mb-1">
-            <span className="p-1.5 rounded-lg bg-indigo-50 text-indigo-600">
-              <Stethoscope className="w-4 h-4" />
-            </span>
-            <span className="text-xs font-bold text-indigo-600 uppercase tracking-wider">Master Catalog</span>
-          </div>
-          <h2 className="text-xl font-bold text-slate-900">Medical Specializations</h2>
+          <h2 className="text-lg font-bold text-slate-900 flex items-center gap-2">
+            <Stethoscope className="w-4 h-4 text-indigo-600" />
+            Medical Specializations
+          </h2>
           <p className="text-xs text-slate-500">
-            Define standardized clinical specialties for doctor profiles and multi-specialty scheduling
+            Manage medical specialties available for doctor profiles
           </p>
         </div>
 
         {editItem === null && (
           <button
             onClick={openNewForm}
-            className="inline-flex items-center gap-2 px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-bold shadow-sm transition"
+            className="ui-btn-primary"
           >
             <Plus className="w-3.5 h-3.5" />
             <span>Add Specialization</span>

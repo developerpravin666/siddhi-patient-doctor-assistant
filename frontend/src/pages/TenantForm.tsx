@@ -16,8 +16,7 @@ import {
   Copy,
   Check,
   Save,
-  RotateCcw,
-  Sparkles
+  RotateCcw
 } from 'lucide-react';
 import { z } from 'zod';
 import { getTenant, createTenant, updateTenant } from '../api/client';
@@ -264,16 +263,13 @@ export const TenantForm: React.FC = () => {
                 <Building2 className="w-4 h-4" />
               </span>
               <h1 className="text-lg font-bold text-slate-900">
-                {isEditMode ? 'Edit Clinic Tenant Profile' : 'Onboard New Clinic Tenant'}
+                {isEditMode ? 'Edit Clinic Profile' : 'Add New Clinic'}
               </h1>
-              <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-purple-100 text-purple-800">
-                Schema-Per-Tenant
-              </span>
             </div>
             <p className="text-[11px] text-slate-500 mt-0.5">
               {isEditMode
-                ? 'Update clinic contact, owner details, and active status.'
-                : 'Provisions a dedicated PostgreSQL schema with independent clinical tables, doctors, and staff.'}
+                ? 'Update clinic contact, owner details, and account status.'
+                : 'Create a new clinic account with its own isolated workspace.'}
             </p>
           </div>
         </div>
@@ -295,10 +291,10 @@ export const TenantForm: React.FC = () => {
                 Provisioning Complete
               </span>
               <h2 className="text-base font-bold text-slate-900 mt-0.5">
-                Clinic Tenant Onboarded Successfully!
+                Clinic Created Successfully
               </h2>
               <p className="text-xs text-slate-500">
-                An isolated PostgreSQL schema was provisioned via DDL with independent clinical tables.
+                The clinic workspace is ready for use.
               </p>
             </div>
           </div>
@@ -309,7 +305,7 @@ export const TenantForm: React.FC = () => {
               <span className="text-slate-900 font-bold">{onboardedResult.name}</span>
             </div>
             <div>
-              <span className="text-slate-400 font-semibold block text-[11px]">Isolated PostgreSQL Schema</span>
+              <span className="text-slate-400 font-semibold block text-[11px]">Workspace ID</span>
               <span className="font-mono text-purple-700 bg-purple-50 px-2 py-0.5 rounded border border-purple-200 font-bold">
                 {onboardedResult.schema}
               </span>
@@ -399,7 +395,7 @@ export const TenantForm: React.FC = () => {
             <div className="flex items-center gap-2 pb-2 border-b border-slate-100">
               <Building2 className="w-4 h-4 text-purple-600" />
               <h3 className="text-xs font-bold uppercase tracking-wider text-slate-600">
-                1. Clinic & Database Schema
+                1. Clinic Identity
               </h3>
             </div>
 
@@ -422,7 +418,7 @@ export const TenantForm: React.FC = () => {
 
               <div>
                 <label className="ui-label">
-                  Tenant PostgreSQL Schema <span className="text-rose-500">*</span>
+                  Clinic Workspace ID <span className="text-rose-500">*</span>
                 </label>
                 <div className="relative">
                   <Database className="w-3.5 h-3.5 absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400" />
@@ -639,7 +635,7 @@ export const TenantForm: React.FC = () => {
               ) : (
                 <>
                   <Save className="w-3.5 h-3.5" />
-                  <span>{isEditMode ? 'Save Changes' : 'Provision Isolated Tenant'}</span>
+                  <span>{isEditMode ? 'Save Changes' : 'Create Clinic'}</span>
                 </>
               )}
             </button>

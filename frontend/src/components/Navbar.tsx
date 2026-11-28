@@ -89,20 +89,20 @@ export const Navbar: React.FC<NavbarProps> = ({
     switch (role) {
       case 'SUPER_ADMIN':
         return {
-          label: 'Product Owner (Super Admin)',
+          label: 'Super Admin',
           bg: 'bg-purple-100 text-purple-800 border-purple-200',
           icon: Shield,
         };
       case 'CLINIC_ADMIN':
         return {
-          label: 'Doctor (Clinic Admin)',
+          label: 'Clinic Admin',
           bg: 'bg-emerald-100 text-emerald-800 border-emerald-200',
           icon: UserCheck,
         };
       case 'RECEPTIONIST':
       default:
         return {
-          label: 'Front Desk (Receptionist)',
+          label: 'Receptionist',
           bg: 'bg-sky-100 text-sky-800 border-sky-200',
           icon: ClipboardList,
         };
